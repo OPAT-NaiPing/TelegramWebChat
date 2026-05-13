@@ -17,6 +17,7 @@ import AuthPassword from './AuthPassword.async';
 import AuthPhoneNumber from './AuthPhoneNumber';
 import AuthQrCode from './AuthQrCode';
 import AuthRegister from './AuthRegister.async';
+import ServerAccountLogin from './ServerAccountLogin';
 
 import './Auth.scss';
 
@@ -54,6 +55,10 @@ const Auth = ({
   );
 
   function getScreen() {
+    if (process.env.SERVER_ACCOUNT_LOGIN === '1') {
+      return <ServerAccountLogin />;
+    }
+
     switch (renderingAuthState) {
       case 'authorizationStateWaitCode':
         return <AuthCode />;
@@ -71,6 +76,10 @@ const Auth = ({
   }
 
   function getActiveKey() {
+    if (process.env.SERVER_ACCOUNT_LOGIN === '1') {
+      return 5;
+    }
+
     switch (renderingAuthState) {
       case 'authorizationStateWaitCode':
         return 0;

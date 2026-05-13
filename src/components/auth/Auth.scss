@@ -81,7 +81,8 @@
 #auth-phone-number-form,
 #auth-code-form,
 #auth-password-form,
-#auth-qr-form {
+#auth-qr-form,
+#auth-server-account-form {
   overflow-y: auto;
   height: 100%;
 }
@@ -227,6 +228,116 @@
 
 #sign-in-password {
   word-break: normal !important;
+}
+
+#server-login-password {
+  -webkit-text-security: disc;
+}
+
+.server-account-form {
+  .form {
+    min-height: 15rem;
+  }
+}
+
+.server-account-error {
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--color-error);
+}
+
+.server-account-list {
+  text-align: left;
+}
+
+.server-turnstile {
+  display: flex;
+  justify-content: center;
+  min-height: 4.25rem;
+  margin-bottom: 1rem;
+}
+
+.server-account-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-bottom: 0.75rem;
+
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.server-account-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: min(28rem, calc(100vh - 22rem));
+}
+
+.server-account-item {
+  cursor: var(--custom-cursor, pointer);
+
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+
+  width: 100%;
+  min-height: 4rem;
+  padding: 0.625rem 0.75rem;
+  border: 0;
+  border-radius: 0.5rem;
+
+  color: var(--color-text);
+  text-align: left;
+
+  background: var(--color-background-secondary);
+
+  &:hover,
+  &:focus {
+    background: var(--color-chat-hover);
+  }
+}
+
+.server-account-avatar {
+  display: flex;
+  flex: 0 0 2.625rem;
+  align-items: center;
+  justify-content: center;
+
+  width: 2.625rem;
+  height: 2.625rem;
+  border-radius: 50%;
+
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+
+  background: var(--color-primary);
+}
+
+.server-account-info {
+  min-width: 0;
+}
+
+.server-account-title,
+.server-account-meta {
+  overflow: hidden;
+  display: block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-account-title {
+  margin-bottom: 0.1875rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.server-account-meta {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
 }
 
 .test-server-badge {

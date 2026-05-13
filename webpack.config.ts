@@ -24,6 +24,11 @@ const {
   HEAD,
   APP_ENV = 'production',
   APP_MOCKED_CLIENT = '',
+  SERVER_ACCOUNT_LOGIN = '',
+  SERVER_BASE_API = '',
+  SERVER_BASE_WS = '',
+  SERVER_SKIP_TURNSTILE = '',
+  SERVER_TURNSTILE_SITE_KEY = '',
   HTTPS_CERT_PATH = '',
   HTTPS_KEY_PATH = '',
 } = process.env;
@@ -40,8 +45,10 @@ const {
 
 const CSP = `
   default-src 'self';
-  connect-src 'self' wss://*.web.telegram.org blob: http: https: ${APP_ENV === 'development' ? 'wss: ipc:' : ''};
-  script-src 'self' 'wasm-unsafe-eval' https://t.me/_websync_ https://telegram.me/_websync_;
+  connect-src 'self' wss://*.web.telegram.org blob: http: https: ws: wss:
+    ${APP_ENV === 'development' ? 'ipc:' : ''};
+  script-src 'self' 'wasm-unsafe-eval'
+    https://t.me/_websync_ https://telegram.me/_websync_ https://challenges.cloudflare.com;
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: blob: https://ss3.4sqi.net/img/categories_v2/;
   media-src 'self' blob: data:;
@@ -217,6 +224,11 @@ export default function createConfig(
       new EnvironmentPlugin({
         APP_ENV,
         APP_MOCKED_CLIENT,
+        SERVER_ACCOUNT_LOGIN,
+        SERVER_BASE_API,
+        SERVER_BASE_WS,
+        SERVER_SKIP_TURNSTILE,
+        SERVER_TURNSTILE_SITE_KEY,
         // eslint-disable-next-line no-null/no-null
         APP_NAME: null,
         APP_TITLE,
