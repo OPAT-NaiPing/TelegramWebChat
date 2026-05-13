@@ -17,7 +17,7 @@ import { subscribe, unsubscribe } from '../../../util/notifications';
 import { oldSetLanguage } from '../../../util/oldLangProvider';
 import { decryptSessionByCurrentHash } from '../../../util/passcode';
 import { applyPerformanceSettings } from '../../../util/perfomanceSettings';
-import { hasImportedServerSession } from '../../../util/serverAccounts';
+import { hasImportedServerSession, isServerAccountFrame } from '../../../util/serverAccounts';
 import { hasStoredSession, storeSession } from '../../../util/sessions';
 import switchTheme from '../../../util/switchTheme';
 import { getSystemTheme, setSystemThemeChangeCallback } from '../../../util/systemTheme';
@@ -89,7 +89,9 @@ addActionHandler('switchMultitabRole', async (global, actions, payload): Promise
         };
         setGlobal(global);
       }
-      if (process.env.SERVER_ACCOUNT_LOGIN !== '1' || hasImportedServerSession()) {
+      const shouldInitServerAccountApi = process.env.SERVER_ACCOUNT_LOGIN !== '1'
+        || (isServerAccountFrame() && hasImportedServerSession());
+      if (shouldInitServerAccountApi) {
         actions.initApi();
       }
     }

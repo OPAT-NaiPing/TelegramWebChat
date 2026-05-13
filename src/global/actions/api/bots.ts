@@ -74,8 +74,13 @@ import { getPeerStarsForMessage } from './messages';
 import { getIsWebAppsFullscreenSupported } from '../../../hooks/useAppLayout';
 
 const TOP_PEERS_REQUEST_COOLDOWN = 60; // 1 min
+const SERVER_TOP_PEERS_REQUEST_COOLDOWN = 10 * 60; // 服务账号模式下 10 分钟内不重复请求推荐数据
 const runDebouncedForSearch = debounce((cb) => cb(), 500, false);
 let botFatherId: string | null;
+
+function getTopPeersRequestCooldown() {
+  return process.env.SERVER_ACCOUNT_LOGIN === '1' ? SERVER_TOP_PEERS_REQUEST_COOLDOWN : TOP_PEERS_REQUEST_COOLDOWN;
+}
 
 addActionHandler('clickSuggestedMessageButton', (global, actions, payload): ActionReturnType => {
   const {
@@ -287,8 +292,20 @@ addActionHandler('restartBot', async (global, actions, payload): Promise<void> =
 
 addActionHandler('loadTopInlineBots', async (global): Promise<void> => {
   const { lastRequestedAt } = global.topInlineBots;
-  if (lastRequestedAt && getServerTime() - lastRequestedAt < TOP_PEERS_REQUEST_COOLDOWN) {
+  const requestedAt = getServerTime();
+  if (lastRequestedAt && requestedAt - lastRequestedAt < getTopPeersRequestCooldown()) {
     return;
+  }
+
+  if (process.env.SERVER_ACCOUNT_LOGIN === '1') {
+    global = {
+      ...global,
+      topInlineBots: {
+        ...global.topInlineBots,
+        lastRequestedAt: requestedAt,
+      },
+    };
+    setGlobal(global);
   }
 
   const result = await callApi('fetchTopInlineBots');
@@ -304,7 +321,7 @@ addActionHandler('loadTopInlineBots', async (global): Promise<void> => {
     topInlineBots: {
       ...global.topInlineBots,
       userIds: ids,
-      lastRequestedAt: getServerTime(),
+      lastRequestedAt: requestedAt,
     },
   };
   setGlobal(global);
@@ -312,8 +329,20 @@ addActionHandler('loadTopInlineBots', async (global): Promise<void> => {
 
 addActionHandler('loadTopBotApps', async (global): Promise<void> => {
   const { lastRequestedAt } = global.topBotApps;
-  if (lastRequestedAt && getServerTime() - lastRequestedAt < TOP_PEERS_REQUEST_COOLDOWN) {
+  const requestedAt = getServerTime();
+  if (lastRequestedAt && requestedAt - lastRequestedAt < getTopPeersRequestCooldown()) {
     return;
+  }
+
+  if (process.env.SERVER_ACCOUNT_LOGIN === '1') {
+    global = {
+      ...global,
+      topBotApps: {
+        ...global.topBotApps,
+        lastRequestedAt: requestedAt,
+      },
+    };
+    setGlobal(global);
   }
 
   const result = await callApi('fetchTopBotApps');
@@ -329,7 +358,7 @@ addActionHandler('loadTopBotApps', async (global): Promise<void> => {
     topBotApps: {
       ...global.topBotApps,
       userIds: ids,
-      lastRequestedAt: getServerTime(),
+      lastRequestedAt: requestedAt,
     },
   };
   setGlobal(global);

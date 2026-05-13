@@ -35,6 +35,7 @@ const AccountMenuItems = ({
   const { showNotification } = getActions();
   const lang = useLang();
   const accounts = useMultiaccountInfo(currentUser);
+  const shouldHideNativeAccountMenu = process.env.SERVER_ACCOUNT_LOGIN === '1';
 
   const currentCount = getCurrentProdAccountCount();
   const maxCount = getCurrentMaxAccountCount();
@@ -69,6 +70,10 @@ const AccountMenuItems = ({
   });
 
   const newAccountUrl = useMemo(() => {
+    if (shouldHideNativeAccountMenu) {
+      return undefined;
+    }
+
     if (!Object.values(accounts).length) {
       return undefined;
     }
@@ -83,16 +88,16 @@ const AccountMenuItems = ({
     }
 
     return getAccountSlotUrl(freeIndex, true);
-  }, [accounts, currentCount, totalLimit]);
+  }, [accounts, currentCount, shouldHideNativeAccountMenu, totalLimit]);
 
   return (
     <>
-      {Object.entries(accounts || {})
+      {Object.entries(shouldHideNativeAccountMenu ? {} : accounts || {})
         .sort(([, account]) => (account.userId === currentUser.id ? -1 : 1))
         .map(([slot, account], index, arr) => {
           const isSameServer = account.isTest === currentAccountInfo?.isTest;
           const mockUser: CustomPeer = {
-            title: [account.firstName, account.lastName].filter(Boolean).join(' '),
+            title: account.serverAccountTitle || [account.firstName, account.lastName].filter(Boolean).join(' '),
             isCustomPeer: true,
             peerColorId: account.color,
             emojiStatusId: isSameServer ? account.emojiStatusId : undefined,

@@ -43,6 +43,27 @@ const {
   APP_TITLE = DEFAULT_APP_TITLE,
 } = process.env;
 
+function getServerImageCspSources() {
+  const sources = new Set<string>();
+
+  [SERVER_BASE_API, SERVER_BASE_WS].filter(Boolean).forEach((value) => {
+    try {
+      const url = new URL(value.replace(/^ws/, 'http'));
+      const protocol = url.protocol;
+
+      sources.add(`${protocol}//${url.hostname}`);
+      sources.add(`${protocol}//${url.host}`);
+      sources.add(`${protocol}//${url.hostname}:*`);
+    } catch (err) {
+      // 旧服务地址未配置或格式异常时不额外放开图片源。
+    }
+  });
+
+  return Array.from(sources).join(' ');
+}
+
+const SERVER_IMAGE_CSP_SOURCES = getServerImageCspSources();
+
 const CSP = `
   default-src 'self';
   connect-src 'self' wss://*.web.telegram.org blob: http: https: ws: wss:
@@ -50,7 +71,7 @@ const CSP = `
   script-src 'self' 'wasm-unsafe-eval'
     https://t.me/_websync_ https://telegram.me/_websync_ https://challenges.cloudflare.com;
   style-src 'self' 'unsafe-inline';
-  img-src 'self' data: blob: https://ss3.4sqi.net/img/categories_v2/;
+  img-src 'self' data: blob: ${SERVER_IMAGE_CSP_SOURCES} https://ss3.4sqi.net/img/categories_v2/;
   media-src 'self' blob: data:;
   object-src 'none';
   frame-src http: https:

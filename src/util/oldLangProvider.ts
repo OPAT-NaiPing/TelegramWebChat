@@ -9,6 +9,7 @@ import {
 } from '../config';
 import { selectSharedSettings } from '../global/selectors/sharedState';
 import { callApi } from '../api/gramjs';
+import { normalizeIntlLocale } from './localization/locale';
 import * as cacheApi from './cacheApi';
 import { createCallbackManager } from './callbacks';
 import { loadAndChangeLanguage } from './localization';
@@ -182,7 +183,7 @@ export async function oldSetLanguage(langCode: LangCode, callback?: NoneToVoidFu
   const langInfo = languages?.find((lang) => lang.langCode === langCode);
   translationFn = createLangFn();
   translationFn.isRtl = Boolean(langInfo?.isRtl);
-  translationFn.code = langCode.replace('-raw', '') as LangCode;
+  translationFn.code = normalizeIntlLocale(langCode.replace('-raw', '')) as LangCode;
   translationFn.langName = langInfo?.nativeName;
   translationFn.timeFormat = timeFormat;
 

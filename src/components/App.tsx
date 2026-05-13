@@ -15,6 +15,7 @@ import { setupBeforeInstallPrompt } from '../util/installPrompt';
 import { ACCOUNT_SLOT, getAccountsInfo, getAccountSlotUrl } from '../util/multiaccount';
 import { hasEncryptedSession } from '../util/passcode';
 import { getInitialLocationHash, parseInitialLocationHash } from '../util/routing';
+import { isServerAccountFrame } from '../util/serverAccounts';
 import { checkSessionLocked, hasStoredSession } from '../util/sessions';
 import { updateSizes } from '../util/windowSize';
 
@@ -30,6 +31,7 @@ import UiLoader from './common/UiLoader';
 import AppInactive from './main/AppInactive';
 import LockScreen from './main/LockScreen.async';
 import Main from './main/Main.async';
+import ServerAccountShell from './main/ServerAccountShell';
 // import Test from './test/demo/MessageTextStreamingTest';
 import Transition from './ui/Transition';
 
@@ -69,6 +71,7 @@ const App = ({
 }: StateProps) => {
   const { isMobile } = useAppLayout();
   const isMobileOs = PLATFORM_ENV === 'iOS' || PLATFORM_ENV === 'Android';
+  const isServerShell = process.env.SERVER_ACCOUNT_LOGIN === '1' && !isServerAccountFrame() && hasStoredSession();
 
   useEffect(() => {
     if (IS_INSTALL_PROMPT_SUPPORTED) {
@@ -207,6 +210,10 @@ const App = ({
       case AppScreens.auth:
         return <Auth />;
       case AppScreens.main:
+        if (isServerShell) {
+          return <ServerAccountShell />;
+        }
+
         return <Main isMobile={isMobile} />;
       case AppScreens.lock:
         return <LockScreen isLocked={isScreenLocked} />;

@@ -60,6 +60,8 @@ export type SessionUserInfo = {
   color?: number;
   isPremium?: boolean;
   emojiStatusId?: string;
+  serverAccountId?: string;
+  serverAccountTitle?: string;
 };
 
 export type SharedSessionData = {

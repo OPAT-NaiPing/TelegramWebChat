@@ -1,14 +1,19 @@
 import { gunzipSync } from 'fflate';
 
 import type { ApiSessionData } from '../api/types';
+import type { GlobalState } from '../global/types';
 import type { SharedSessionData } from '../types';
 
-import { ACCOUNT_SLOT, writeSlotSession } from './multiaccount';
+import { FALLBACK_LANG_CODE, SERVER_ACCOUNT_DEFAULT_LANG_CODE, SESSION_ACCOUNT_PREFIX } from '../config';
+import {
+  ACCOUNT_SLOT,
+  getAccountSlotUrl,
+  loadSlotSession,
+  writeSlotSession,
+} from './multiaccount';
 import {
   clearStoredSession,
   hasStoredSession,
-  loadSlotSession,
-  storeSession,
 } from './sessions';
 
 const ACCOUNT_LIST_CODE = 0x1001;
@@ -16,6 +21,10 @@ const INIT_SYSTEM_CODE = 0x0007;
 const DEFAULT_PAGE_SIZE = 50;
 const REQUEST_TIMEOUT = 30000;
 const WS_CONNECT_TIMEOUT = 15000;
+const SERVER_ACCOUNT_STATE_KEY = 'serverAccountState';
+const SERVER_ACCOUNT_SLOT_MAP_KEY = 'serverAccountSlotMap';
+const SELECTED_SERVER_ACCOUNT_KEY_PREFIX = 'serverSelectedAccountId';
+const SERVER_ACCOUNT_FRAME_QUERY = 'serverAccountFrame';
 
 type LoginResponse = {
   code?: number;
@@ -38,6 +47,8 @@ export type ServerAccount = {
   ID?: number | string;
   id?: number | string;
   account?: string;
+  appId?: number | string;
+  userId?: number | string;
   phone?: string;
   firstName?: string;
   lastName?: string;
@@ -80,6 +91,97 @@ type ServerAccountState = {
 let state: ServerAccountState | undefined;
 let socket: WebSocket | undefined;
 const pendingRequests = new Map<string, (value: AccountListResponse) => void>();
+
+function getSelectedAccountStorageKey() {
+  return `${SELECTED_SERVER_ACCOUNT_KEY_PREFIX}_${ACCOUNT_SLOT || 1}`;
+}
+
+function getSelectedAccountStorageKeyBySlot(slot: number | undefined) {
+  return `${SELECTED_SERVER_ACCOUNT_KEY_PREFIX}_${slot || 1}`;
+}
+
+function saveServerAccountSlotMap(slotMap: Record<string, number>) {
+  localStorage.setItem(SERVER_ACCOUNT_SLOT_MAP_KEY, JSON.stringify(slotMap));
+}
+
+function loadServerAccountSlotMap() {
+  try {
+    return JSON.parse(localStorage.getItem(SERVER_ACCOUNT_SLOT_MAP_KEY) || '{}') as Record<string, number>;
+  } catch (err) {
+    localStorage.removeItem(SERVER_ACCOUNT_SLOT_MAP_KEY);
+    return {};
+  }
+}
+
+export function isServerAccountFrame() {
+  return process.env.SERVER_ACCOUNT_LOGIN === '1'
+    && new URLSearchParams(window.location.search).get(SERVER_ACCOUNT_FRAME_QUERY) === '1';
+}
+
+export function getServerAccountFrameUrl(slot: number) {
+  const url = new URL(window.location.href);
+
+  url.searchParams.set(SERVER_ACCOUNT_FRAME_QUERY, '1');
+  if (slot === 1) {
+    url.searchParams.delete('account');
+  } else {
+    url.searchParams.set('account', String(slot));
+  }
+  url.hash = '';
+
+  return url.toString();
+}
+
+function persistState() {
+  if (!state?.token) return;
+
+  // 旧服务 token 用于聊天页账号侧栏刷新账号列表，避免进入主界面后刷新页面丢失业务 WebSocket 登录态。
+  localStorage.setItem(SERVER_ACCOUNT_STATE_KEY, JSON.stringify({
+    token: state.token,
+    user: state.user,
+    accounts: state.accounts,
+    offset: state.offset,
+    hasMore: state.hasMore,
+  }));
+}
+
+function restoreState() {
+  if (state?.token) return state;
+
+  try {
+    const savedState = JSON.parse(
+      localStorage.getItem(SERVER_ACCOUNT_STATE_KEY) || '{}',
+    ) as Partial<ServerAccountState>;
+    if (savedState?.token) {
+      state = {
+        token: savedState.token,
+        user: savedState.user,
+        accounts: savedState.accounts || [],
+        offset: savedState.offset,
+        hasMore: savedState.hasMore,
+      };
+    }
+  } catch (err) {
+    localStorage.removeItem(SERVER_ACCOUNT_STATE_KEY);
+  }
+
+  return state;
+}
+
+function getRequiredState() {
+  const currentState = restoreState();
+  if (!currentState?.token) {
+    throw new Error('旧服务登录态已失效，请重新登录');
+  }
+
+  return currentState;
+}
+
+function isServerAuthExpiredMessage(message?: string) {
+  if (!message) return false;
+
+  return /token|登录|登陆|鉴权|认证|授权|过期|失效|无效|未登录|401|403/i.test(message);
+}
 
 function getBaseApi() {
   return trimTrailingSlash(process.env.SERVER_BASE_API || process.env.BASE_API || '');
@@ -302,22 +404,21 @@ export async function loginServerAccount(username: string, password: string, tok
     user: response.data.user,
     accounts: [],
   };
+  persistState();
 
   return state;
 }
 
 function buildWsUrl() {
-  if (!state?.token) {
-    throw new Error('未登录旧服务');
-  }
+  const currentState = getRequiredState();
 
   const configuredWs = getBaseWs();
   if (configuredWs) {
     if (configuredWs.includes('{token}')) {
-      return configuredWs.replace('{token}', encodeURIComponent(state.token));
+      return configuredWs.replace('{token}', encodeURIComponent(currentState.token));
     }
     if (configuredWs.includes('token=')) {
-      return `${configuredWs}${encodeURIComponent(state.token)}`;
+      return `${configuredWs}${encodeURIComponent(currentState.token)}`;
     }
     // 旧项目 VITE_BASE_WS 是 token 前缀，这里保持相同拼接语义。
     return configuredWs;
@@ -330,7 +431,7 @@ function buildWsUrl() {
 
   const apiUrl = new URL(baseApi, window.location.href);
   const protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${apiUrl.host}/im/ws2?token=${encodeURIComponent(state.token)}`;
+  return `${protocol}//${apiUrl.host}/im/ws2?token=${encodeURIComponent(currentState.token)}`;
 }
 
 async function normalizeWsData(data: MessageEvent['data']) {
@@ -431,14 +532,15 @@ function sendServerWsMessage<T = AccountListResponse>(message: Record<string, an
   });
 }
 
-export async function fetchServerAccounts(content = '', offset?: unknown) {
+export async function fetchServerAccounts(content = '', offset?: unknown, searchType: number | string = 3) {
   await connectServerWs();
+  const currentState = getRequiredState();
 
   const response = await sendServerWsMessage<AccountListResponse>({
     aid: 0,
     code: ACCOUNT_LIST_CODE,
     data: JSON.stringify({
-      type: 3,
+      type: searchType,
       content,
       offset,
       pageSize: DEFAULT_PAGE_SIZE,
@@ -448,25 +550,43 @@ export async function fetchServerAccounts(content = '', offset?: unknown) {
   const responseData = response.data;
   if (!Array.isArray(responseData)) {
     if (responseData?.code) {
-      throw new Error(responseData.msg || response.msg || '获取账号列表失败');
+      const message = responseData.msg || response.msg || '获取账号列表失败';
+      if (isServerAuthExpiredMessage(message)) {
+        throw new Error('旧服务登录态已失效，请重新登录');
+      }
+      throw new Error(message);
+    }
+    if (isServerAuthExpiredMessage(response.msg)) {
+      throw new Error('旧服务登录态已失效，请重新登录');
     }
     throw new Error(response.msg || '获取账号列表失败');
   }
 
   const accounts = responseData;
   state = {
-    token: state!.token,
-    user: state!.user,
-    accounts: offset ? [...state!.accounts, ...accounts] : accounts,
+    token: currentState.token,
+    user: currentState.user,
+    accounts: offset ? [...currentState.accounts, ...accounts] : accounts,
     offset: response.offset,
     hasMore: Boolean(response.offset),
   };
+  persistState();
 
   return {
     accounts: state.accounts,
     offset: state.offset,
     hasMore: state.hasMore,
   };
+}
+
+export async function fetchAllServerAccounts(content = '', searchType: number | string = 3) {
+  let result = await fetchServerAccounts(content, undefined, searchType);
+
+  while (result.hasMore) {
+    result = await fetchServerAccounts(content, result.offset, searchType);
+  }
+
+  return result;
 }
 
 function normalizeAuthKey(authKey: string) {
@@ -498,13 +618,89 @@ function pickAuthKey(account: ServerAccount, dcId: number) {
 }
 
 export function getAccountTitle(account: ServerAccount) {
-  return account.remark
-    || account.nickName
+  return account.nickName
     || [account.firstName, account.lastName].filter(Boolean).join(' ')
     || account.username
     || account.account
     || account.phone
+    || account.remark
     || `账号 ${account.ID ?? account.id ?? ''}`.trim();
+}
+
+export function getServerAccountId(account: ServerAccount) {
+  const id = account.ID ?? account.id ?? account.account ?? account.phone;
+  return id === undefined ? undefined : String(id);
+}
+
+function getServerAccountUserId(account: ServerAccount) {
+  const id = account.appId ?? account.userId ?? getServerAccountId(account);
+  return id === undefined ? undefined : String(id);
+}
+
+function getSlotStorageKey(slot: number) {
+  return `${SESSION_ACCOUNT_PREFIX}${slot || 1}`;
+}
+
+function getSlotValue(slot: number) {
+  return slot === 1 ? undefined : slot;
+}
+
+function getStoredSlotNumbers() {
+  return Object.keys(localStorage)
+    .filter((key) => key.startsWith(SESSION_ACCOUNT_PREFIX))
+    .map((key) => Number(key.slice(SESSION_ACCOUNT_PREFIX.length)))
+    .filter((slot) => slot && !Number.isNaN(slot));
+}
+
+function getStoredServerAccountSlots() {
+  const slots: Record<string, { slot: number; data: SharedSessionData }> = {};
+
+  getStoredSlotNumbers()
+    .forEach((slot) => {
+      const data = loadSlotSession(slot);
+      if (data?.serverAccountId) {
+        slots[data.serverAccountId] = { slot, data };
+      }
+    });
+
+  return slots;
+}
+
+function getSharedSessionAuthKey(data: SharedSessionData) {
+  const dcId = data.dcId as 1 | 2 | 3 | 4 | 5;
+  return data[`dc${dcId}_auth_key`];
+}
+
+function isSameServerSharedSession(current: SharedSessionData | undefined, next: SharedSessionData) {
+  return current?.serverAccountId === next.serverAccountId
+    && current?.dcId === next.dcId
+    && getSharedSessionAuthKey(current) === getSharedSessionAuthKey(next);
+}
+
+export function getSelectedServerAccountId() {
+  return localStorage.getItem(getSelectedAccountStorageKey()) || undefined;
+}
+
+export function clearServerAccountState() {
+  state = undefined;
+  socket?.close();
+  socket = undefined;
+  pendingRequests.clear();
+  localStorage.removeItem(SERVER_ACCOUNT_STATE_KEY);
+  localStorage.removeItem(SERVER_ACCOUNT_SLOT_MAP_KEY);
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith(SELECTED_SERVER_ACCOUNT_KEY_PREFIX))
+    .forEach((key) => localStorage.removeItem(key));
+  // 旧服务退出后不保留服务器下发的 auth key，只做本地清理，不调用 Telegram 官方退出。
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith(SESSION_ACCOUNT_PREFIX))
+    .forEach((key) => localStorage.removeItem(key));
+}
+
+export function signOutServerAccount() {
+  clearServerAccountState();
+  clearStoredSession(ACCOUNT_SLOT);
+  window.location.hash = 'login';
 }
 
 export function buildSessionFromServerAccount(account: ServerAccount): ApiSessionData {
@@ -528,26 +724,122 @@ export function buildSessionFromServerAccount(account: ServerAccount): ApiSessio
   };
 }
 
-export function importServerAccountSession(account: ServerAccount) {
+function buildSharedSessionFromServerAccount(account: ServerAccount): SharedSessionData {
   const sessionData = buildSessionFromServerAccount(account);
-  clearStoredSession(ACCOUNT_SLOT);
-  storeSession(sessionData);
-
   const title = getAccountTitle(account);
-  const slotSession = loadSlotSession(ACCOUNT_SLOT);
+  const serverAccountId = getServerAccountId(account);
   const sharedSessionData: SharedSessionData = {
-    ...slotSession!,
+    dcId: sessionData.mainDcId,
+    isTest: sessionData.isTest,
+    userId: getServerAccountUserId(account),
     firstName: title,
     phone: account.phone || account.account,
     avatarUri: account.avatarUri || account.headimg,
+    serverAccountId,
+    serverAccountTitle: title,
   };
 
-  // 先写入账号基础展示数据；连接官方 apiws 后会用真实 Telegram 用户信息覆盖。
-  writeSlotSession(ACCOUNT_SLOT, sharedSessionData);
+  Object.keys(sessionData.keys).map(Number).forEach((dcId) => {
+    sharedSessionData[`dc${dcId as 1 | 2 | 3 | 4 | 5}_auth_key`] = sessionData.keys[dcId];
+  });
 
-  return sessionData;
+  return sharedSessionData;
+}
+
+export function importServerAccountSession(account: ServerAccount) {
+  const sharedSessionData = buildSharedSessionFromServerAccount(account);
+  const currentSlotData = loadSlotSession(ACCOUNT_SLOT);
+
+  if (!isSameServerSharedSession(currentSlotData, sharedSessionData)) {
+    clearStoredSession(ACCOUNT_SLOT);
+    // 先写入账号基础展示数据；连接官方 apiws 后会用真实 Telegram 用户信息覆盖。
+    writeSlotSession(ACCOUNT_SLOT, sharedSessionData);
+  }
+  if (sharedSessionData.serverAccountId) {
+    localStorage.setItem(getSelectedAccountStorageKey(), sharedSessionData.serverAccountId);
+  }
+
+  return {
+    mainDcId: sharedSessionData.dcId,
+    keys: {
+      [sharedSessionData.dcId]: sharedSessionData[`dc${sharedSessionData.dcId as 1 | 2 | 3 | 4 | 5}_auth_key`]!,
+    },
+    isTest: sharedSessionData.isTest,
+  };
+}
+
+export function importServerAccountsIntoNativeSlots(accounts: ServerAccount[]) {
+  // 服务端模式下账号列表由旧服务托管，这里同步为原生多账号槽位；已有相同账号不重复置入，保留原生接口拉回来的账号资料。
+  const storedSlots = getStoredServerAccountSlots();
+  const storedServerSlotNumbers = new Set(Object.values(storedSlots).map(({ slot }) => slot));
+  const occupiedNativeSlots = new Set(getStoredSlotNumbers().filter((slot) => !storedServerSlotNumbers.has(slot)));
+  const usedSlots = new Set<number>();
+  const slotMap: Record<string, number> = {};
+
+  function pickFreeSlot() {
+    let slot = 1;
+    while (usedSlots.has(slot) || occupiedNativeSlots.has(slot)) {
+      slot += 1;
+    }
+    return slot;
+  }
+
+  accounts.forEach((account) => {
+    const sharedSessionData = buildSharedSessionFromServerAccount(account);
+    const storedSlot = sharedSessionData.serverAccountId ? storedSlots[sharedSessionData.serverAccountId] : undefined;
+    const slot = storedSlot && !usedSlots.has(storedSlot.slot) ? storedSlot.slot : pickFreeSlot();
+    const slotValue = getSlotValue(slot);
+
+    if (!isSameServerSharedSession(storedSlot?.data, sharedSessionData)) {
+      writeSlotSession(slotValue, sharedSessionData);
+    }
+    if (sharedSessionData.serverAccountId) {
+      localStorage.setItem(getSelectedAccountStorageKeyBySlot(slotValue), sharedSessionData.serverAccountId);
+      slotMap[sharedSessionData.serverAccountId] = slot;
+    }
+    usedSlots.add(slot);
+  });
+
+  Object.values(storedSlots).forEach(({ slot }) => {
+    if (usedSlots.has(slot)) return;
+    localStorage.removeItem(getSlotStorageKey(slot));
+    localStorage.removeItem(getSelectedAccountStorageKeyBySlot(getSlotValue(slot)));
+  });
+
+  saveServerAccountSlotMap(slotMap);
+
+  if (!accounts.length) {
+    throw new Error('没有可用账号');
+  }
+
+  return getAccountSlotUrl(1);
+}
+
+export function getServerAccountSlot(account: ServerAccount) {
+  const accountId = getServerAccountId(account);
+  if (!accountId) return undefined;
+
+  const slot = loadServerAccountSlotMap()[accountId];
+  return slot && !Number.isNaN(slot) ? slot : undefined;
 }
 
 export function hasImportedServerSession() {
   return hasStoredSession();
+}
+
+export function applyServerAccountDefaultLanguage<T extends GlobalState>(global: T): T {
+  if (process.env.SERVER_ACCOUNT_LOGIN !== '1') return global;
+  if (global.sharedState.settings.language !== FALLBACK_LANG_CODE) return global;
+
+  return {
+    ...global,
+    sharedState: {
+      ...global.sharedState,
+      settings: {
+        ...global.sharedState.settings,
+        // 服务端账号模式默认内置 https://t.me/setlanguage/zh-hans-beta 对应的官方 weba 语言包。
+        language: SERVER_ACCOUNT_DEFAULT_LANG_CODE,
+      },
+    },
+  };
 }

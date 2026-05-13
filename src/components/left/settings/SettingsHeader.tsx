@@ -16,6 +16,8 @@ import ConfirmDialog from '../../ui/ConfirmDialog';
 import DropdownMenu from '../../ui/DropdownMenu';
 import MenuItem from '../../ui/MenuItem';
 
+const IS_SERVER_ACCOUNT_LOGIN = process.env.SERVER_ACCOUNT_LOGIN === '1';
+
 type OwnProps = {
   currentScreen: SettingsScreens;
   editedFolderId?: number;
@@ -41,6 +43,9 @@ const SettingsHeader: FC<OwnProps> = ({
   });
 
   const openSignOutConfirmation = useCallback(() => {
+    // 服务账号由后台下发 authKey，不能触发原生 Telegram 登出。
+    if (IS_SERVER_ACCOUNT_LOGIN) return;
+
     setIsSignOutDialogOpen(true);
   }, []);
 
@@ -55,6 +60,9 @@ const SettingsHeader: FC<OwnProps> = ({
   }, [editedFolderId, openDeleteChatFolderModal]);
 
   const handleSignOutMessage = useCallback(() => {
+    // 服务账号由外层后台账号管理退出，避免吊销官方会话。
+    if (IS_SERVER_ACCOUNT_LOGIN) return;
+
     closeSignOutConfirmation();
     signOut({ forceInitApi: true });
   }, [closeSignOutConfirmation, signOut]);
@@ -278,7 +286,9 @@ const SettingsHeader: FC<OwnProps> = ({
               trigger={SettingsMenuButton}
               positionX="right"
             >
-              <MenuItem icon="logout" onClick={openSignOutConfirmation}>{oldLang('LogOutTitle')}</MenuItem>
+              {!IS_SERVER_ACCOUNT_LOGIN && (
+                <MenuItem icon="logout" onClick={openSignOutConfirmation}>{oldLang('LogOutTitle')}</MenuItem>
+              )}
             </DropdownMenu>
           </div>
         );
@@ -296,14 +306,16 @@ const SettingsHeader: FC<OwnProps> = ({
         iconName="arrow-left"
       />
       {renderHeaderContent()}
-      <ConfirmDialog
-        isOpen={isSignOutDialogOpen}
-        onClose={closeSignOutConfirmation}
-        text={oldLang('lng_sure_logout')}
-        confirmLabel={oldLang('AccountSettings.Logout')}
-        confirmHandler={handleSignOutMessage}
-        confirmIsDestructive
-      />
+      {!IS_SERVER_ACCOUNT_LOGIN && (
+        <ConfirmDialog
+          isOpen={isSignOutDialogOpen}
+          onClose={closeSignOutConfirmation}
+          text={oldLang('lng_sure_logout')}
+          confirmLabel={oldLang('AccountSettings.Logout')}
+          confirmHandler={handleSignOutMessage}
+          confirmIsDestructive
+        />
+      )}
     </div>
   );
 };

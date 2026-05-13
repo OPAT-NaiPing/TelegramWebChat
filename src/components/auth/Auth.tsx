@@ -7,6 +7,7 @@ import type { GlobalState } from '../../global/types';
 
 import { IS_TAURI } from '../../util/browser/globalEnvironment';
 import { IS_MAC_OS, PLATFORM_ENV } from '../../util/browser/windowEnvironment';
+import { isServerAccountFrame } from '../../util/serverAccounts';
 
 import useCurrentOrPrev from '../../hooks/useCurrentOrPrev';
 import useHistoryBack from '../../hooks/useHistoryBack';
@@ -17,6 +18,7 @@ import AuthPassword from './AuthPassword.async';
 import AuthPhoneNumber from './AuthPhoneNumber';
 import AuthQrCode from './AuthQrCode';
 import AuthRegister from './AuthRegister.async';
+import ServerAccountExpired from './ServerAccountExpired';
 import ServerAccountLogin from './ServerAccountLogin';
 
 import './Auth.scss';
@@ -33,6 +35,7 @@ const Auth = ({
   } = getActions();
 
   const isMobile = PLATFORM_ENV === 'iOS' || PLATFORM_ENV === 'Android';
+  const isServerFrame = isServerAccountFrame();
 
   const handleChangeAuthorizationMethod = () => {
     if (!isMobile) {
@@ -56,6 +59,10 @@ const Auth = ({
 
   function getScreen() {
     if (process.env.SERVER_ACCOUNT_LOGIN === '1') {
+      if (isServerFrame) {
+        return <ServerAccountExpired />;
+      }
+
       return <ServerAccountLogin />;
     }
 

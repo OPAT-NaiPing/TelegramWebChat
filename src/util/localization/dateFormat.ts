@@ -2,6 +2,7 @@ import type { TimeFormat } from '../../types';
 import type { LangFn } from './types';
 
 import { FALLBACK_LANG_CODE } from '../../config';
+import { normalizeIntlLocale } from './locale';
 
 import LimitedMap from '../primitives/LimitedMap';
 
@@ -221,13 +222,14 @@ function getRelativePart(targetTime: number, anchorTime: number): RelativePart {
 }
 
 function getDateTimeFormatter(locale: string, timeFormat: TimeFormat, options: Intl.DateTimeFormatOptions) {
-  const key = `dateTime:${locale}:${timeFormat}:${serializeRecord(options)}`;
+  const intlLocale = normalizeIntlLocale(locale);
+  const key = `dateTime:${intlLocale}:${timeFormat}:${serializeRecord(options)}`;
   const cachedFormatter = dateTimeFormatters.get(key);
   if (cachedFormatter) {
     return cachedFormatter;
   }
 
-  const formatter = createDateTimeFormatter(locale, timeFormat, options);
+  const formatter = createDateTimeFormatter(intlLocale, timeFormat, options);
   dateTimeFormatters.set(key, formatter);
   return formatter;
 }
@@ -247,13 +249,14 @@ function createDateTimeFormatter(locale: string, timeFormat: TimeFormat, options
 }
 
 function getRelativeTimeFormatter(locale: string, numericType: RelativeType) {
-  const key = `relative:${locale}:${numericType}`;
+  const intlLocale = normalizeIntlLocale(locale);
+  const key = `relative:${intlLocale}:${numericType}`;
   const cachedFormatter = relativeTimeFormatters.get(key);
   if (cachedFormatter) {
     return cachedFormatter;
   }
 
-  const formatter = createRelativeTimeFormatter(locale, numericType);
+  const formatter = createRelativeTimeFormatter(intlLocale, numericType);
   relativeTimeFormatters.set(key, formatter);
   return formatter;
 }

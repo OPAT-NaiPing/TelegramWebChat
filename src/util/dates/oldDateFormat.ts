@@ -2,6 +2,7 @@ import type { OldLangFn } from '../../hooks/useOldLang';
 import type { TimeFormat } from '../../types';
 import type { LangFn } from '../localization';
 
+import { normalizeIntlLocale } from '../localization/locale';
 import { getServerTime } from '../serverTime';
 import withCache from '../withCache';
 import { getDays, getHours, getMinutes } from './units';
@@ -394,7 +395,7 @@ const formatDayToStringWithCache = withCache((
   noDay?: boolean,
 ) => {
   return new Date(dayStartAt).toLocaleString(
-    locale,
+    normalizeIntlLocale(locale),
     {
       year: noYear ? undefined : 'numeric',
       month: monthFormat,
@@ -422,7 +423,7 @@ export function formatDateTimeToString(
 ) {
   const date = typeof datetime === 'number' ? new Date(datetime) : datetime;
   return date.toLocaleString(
-    locale,
+    normalizeIntlLocale(locale),
     {
       year: noYear ? undefined : 'numeric',
       month: 'short',

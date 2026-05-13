@@ -253,6 +253,7 @@ export const DEFAULT_STATUS_ICON_ID = 'status-default-icon';
 export const EMOJI_IMG_REGEX = /<img[^>]+alt="([^"]+)"(?![^>]*data-document-id)[^>]*>/gm;
 
 export const FALLBACK_LANG_CODE = 'en';
+export const SERVER_ACCOUNT_DEFAULT_LANG_CODE = 'zh-hans-beta';
 export const BASE_EMOJI_KEYWORD_LANG = FALLBACK_LANG_CODE;
 
 export const MENU_TRANSITION_DURATION = 200;

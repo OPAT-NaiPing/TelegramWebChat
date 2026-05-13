@@ -32,6 +32,7 @@ import {
 import { GLOBAL_STATE_CACHE_KEY } from '../util/multiaccount';
 import { encryptSession } from '../util/passcode';
 import { onBeforeUnload, throttle } from '../util/schedulers';
+import { applyServerAccountDefaultLanguage } from '../util/serverAccounts';
 import { hasStoredSession } from '../util/sessions';
 import { selectThreadInfo } from './selectors/threads';
 import { addActionHandler, getGlobal } from './index';
@@ -191,7 +192,7 @@ async function readCache(initialState: GlobalState): Promise<GlobalState> {
     },
   };
 
-  return newState;
+  return applyServerAccountDefaultLanguage(newState);
 }
 
 export function migrateCache(cached: GlobalState, initialState: GlobalState) {

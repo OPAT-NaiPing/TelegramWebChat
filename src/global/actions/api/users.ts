@@ -44,7 +44,12 @@ import {
 
 const PROFILE_PHOTOS_FIRST_LOAD_LIMIT = 10;
 const TOP_PEERS_REQUEST_COOLDOWN = 60; // 1 min
+const SERVER_TOP_PEERS_REQUEST_COOLDOWN = 10 * 60; // 服务账号模式下 10 分钟内不重复请求推荐联系人
 const runThrottledForSearch = throttle((cb) => cb(), 500, false);
+
+function getTopPeersRequestCooldown() {
+  return process.env.SERVER_ACCOUNT_LOGIN === '1' ? SERVER_TOP_PEERS_REQUEST_COOLDOWN : TOP_PEERS_REQUEST_COOLDOWN;
+}
 
 addActionHandler('loadFullUser', async (global, actions, payload): Promise<void> => {
   const { userId, withPhotos } = payload;
@@ -107,9 +112,21 @@ addActionHandler('loadUser', async (global, actions, payload): Promise<void> => 
 
 addActionHandler('loadTopUsers', async (global): Promise<void> => {
   const { topPeers: { lastRequestedAt } } = global;
+  const requestedAt = getServerTime();
 
-  if (!(!lastRequestedAt || getServerTime() - lastRequestedAt > TOP_PEERS_REQUEST_COOLDOWN)) {
+  if (lastRequestedAt && requestedAt - lastRequestedAt <= getTopPeersRequestCooldown()) {
     return;
+  }
+
+  if (process.env.SERVER_ACCOUNT_LOGIN === '1') {
+    global = {
+      ...global,
+      topPeers: {
+        ...global.topPeers,
+        lastRequestedAt: requestedAt,
+      },
+    };
+    setGlobal(global);
   }
 
   const result = await callApi('fetchTopUsers');
@@ -125,7 +142,7 @@ addActionHandler('loadTopUsers', async (global): Promise<void> => {
     topPeers: {
       ...global.topPeers,
       userIds: ids,
-      lastRequestedAt: getServerTime(),
+      lastRequestedAt: requestedAt,
     },
   };
   setGlobal(global);

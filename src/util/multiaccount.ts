@@ -13,14 +13,20 @@ import { IS_MULTIACCOUNT_SUPPORTED } from './browser/globalEnvironment';
 const WORKER_NAME = typeof WorkerGlobalScope !== 'undefined' && globalThis.self instanceof WorkerGlobalScope
   ? globalThis.self.name : undefined;
 const WORKER_ACCOUNT_SLOT = WORKER_NAME ? Number(new URLSearchParams(WORKER_NAME).get(ACCOUNT_QUERY)) : undefined;
+const CURRENT_URL = new URL(globalThis.location.href);
 
 export const ACCOUNT_SLOT = WORKER_ACCOUNT_SLOT || (
   IS_MULTIACCOUNT_SUPPORTED ? getAccountSlot(globalThis.location.href) : undefined
 );
 
-export const DATA_BROADCAST_CHANNEL_NAME = `${DATA_BROADCAST_CHANNEL_PREFIX}_${ACCOUNT_SLOT || 1}`;
-export const ESTABLISH_BROADCAST_CHANNEL_NAME = `${ESTABLISH_BROADCAST_CHANNEL_PREFIX}_${ACCOUNT_SLOT || 1}`;
-export const MULTITAB_STORAGE_KEY = `${MULTITAB_LOCALSTORAGE_KEY_PREFIX}_${ACCOUNT_SLOT || 1}`;
+const IS_SERVER_ACCOUNT_SHELL = typeof window === 'object'
+  && process.env.SERVER_ACCOUNT_LOGIN === '1'
+  && CURRENT_URL.searchParams.get('serverAccountFrame') !== '1';
+const CHANNEL_ACCOUNT_SLOT = IS_SERVER_ACCOUNT_SHELL ? 'server_shell' : ACCOUNT_SLOT || 1;
+
+export const DATA_BROADCAST_CHANNEL_NAME = `${DATA_BROADCAST_CHANNEL_PREFIX}_${CHANNEL_ACCOUNT_SLOT}`;
+export const ESTABLISH_BROADCAST_CHANNEL_NAME = `${ESTABLISH_BROADCAST_CHANNEL_PREFIX}_${CHANNEL_ACCOUNT_SLOT}`;
+export const MULTITAB_STORAGE_KEY = `${MULTITAB_LOCALSTORAGE_KEY_PREFIX}_${CHANNEL_ACCOUNT_SLOT}`;
 export const GLOBAL_STATE_CACHE_KEY = ACCOUNT_SLOT
   ? `${GLOBAL_STATE_CACHE_PREFIX}_${ACCOUNT_SLOT}` : GLOBAL_STATE_CACHE_PREFIX;
 
@@ -51,6 +57,7 @@ function getAccountInfo(slot: number): AccountInfo | undefined {
   const sessionData = loadSlotSession(slot);
   const {
     userId, avatarUri, color, emojiStatusId, firstName, lastName, isPremium, isTest, phone,
+    serverAccountId, serverAccountTitle,
   } = sessionData || {};
 
   if (!userId) return undefined;
@@ -65,6 +72,8 @@ function getAccountInfo(slot: number): AccountInfo | undefined {
     isPremium,
     isTest,
     phone,
+    serverAccountId,
+    serverAccountTitle,
   };
 }
 

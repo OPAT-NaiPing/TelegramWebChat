@@ -82,6 +82,7 @@
 #auth-code-form,
 #auth-password-form,
 #auth-qr-form,
+#auth-server-account-expired,
 #auth-server-account-form {
   overflow-y: auto;
   height: 100%;
@@ -280,8 +281,8 @@
   cursor: var(--custom-cursor, pointer);
 
   display: flex;
-  align-items: center;
   gap: 0.75rem;
+  align-items: center;
 
   width: 100%;
   min-height: 4rem;

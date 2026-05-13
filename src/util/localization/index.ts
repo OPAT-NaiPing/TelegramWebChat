@@ -37,6 +37,7 @@ import { omit, unique } from '../iteratees';
 import { replaceInStringsWithTeact } from '../replaceWithTeact';
 import { fastRaf } from '../schedulers';
 import { resetDateFormatCache } from './dateFormat';
+import { normalizeIntlLocale } from './locale';
 
 import Deferred from '../Deferred';
 import LimitedMap from '../primitives/LimitedMap';
@@ -321,7 +322,7 @@ function createTranslationFn(): LangFn {
   }) as LangFn;
   fn.rawCode = language?.langCode || FORMATTERS_FALLBACK_LANG;
   fn.isRtl = language?.isRtl;
-  fn.code = language?.pluralCode || FORMATTERS_FALLBACK_LANG;
+  fn.code = getIntlLocale();
   fn.timeFormat = currentTimeFormat;
   fn.with = ({ key, variables, options }: LangFnParameters) => {
     if (options && areAdvancedLangFnOptions(options)) {
@@ -361,7 +362,7 @@ export function setTimeFormat(timeFormat: TimeFormat) {
 }
 
 function getIntlLocale(languageInfo = language) {
-  return languageInfo?.pluralCode || FORMATTERS_FALLBACK_LANG;
+  return normalizeIntlLocale(languageInfo?.pluralCode || languageInfo?.baseLangCode || languageInfo?.langCode);
 }
 
 function getString(langKey: LangKey, count: number) {

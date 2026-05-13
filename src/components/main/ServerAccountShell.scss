@@ -1,0 +1,455 @@
+#ServerAccountShell {
+  position: relative;
+
+  display: grid;
+  grid-template-columns: var(--server-account-sidebar-width, 20rem) 3.25rem minmax(0, 1fr);
+
+  width: 100%;
+  height: 100%;
+
+  background: var(--color-background);
+
+  &.is-resizing-sidebar {
+    cursor: col-resize;
+
+    .server-account-shell-frame {
+      pointer-events: none;
+    }
+  }
+
+  &.is-sidebar-collapsed {
+    grid-template-columns: 3.25rem minmax(0, 1fr);
+
+    .server-account-shell-sidebar {
+      display: none;
+    }
+  }
+}
+
+.server-account-shell-sidebar {
+  position: relative;
+
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  min-width: 0;
+  height: 100%;
+  border-right: 1px solid var(--color-borders);
+
+  background: var(--color-background);
+}
+
+.server-account-shell-resizer {
+  cursor: col-resize;
+
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: -0.25rem;
+  bottom: 0;
+
+  width: 0.5rem;
+  padding: 0;
+  border: 0;
+
+  background: transparent;
+  outline: none;
+
+  &::after {
+    content: "";
+
+    position: absolute;
+    top: 0;
+    right: 0.1875rem;
+    bottom: 0;
+
+    width: 0.125rem;
+
+    opacity: 0;
+    background: var(--color-primary);
+
+    transition: opacity 150ms ease;
+  }
+
+  &:hover::after,
+  &:focus-visible::after,
+  #ServerAccountShell.is-resizing-sidebar &::after {
+    opacity: 1;
+  }
+}
+
+.server-account-shell-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+
+  height: var(--header-height);
+  padding: 0 0.75rem;
+}
+
+.server-account-shell-heading {
+  overflow: hidden;
+
+  font-size: 1rem;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-account-shell-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+}
+
+.server-account-shell-search {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  flex: 0 0 auto;
+  gap: 0.5rem;
+
+  padding: 0 0.75rem 0.5rem;
+}
+
+.server-account-shell-select {
+  height: 2.25rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-borders-input);
+  border-radius: 0.5rem;
+
+  font-size: 0.875rem;
+  color: var(--color-text);
+
+  background: var(--color-background);
+  outline: none;
+}
+
+.server-account-shell-search-input {
+  display: flex;
+  align-items: center;
+
+  min-width: 0;
+  height: 2.25rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-borders-input);
+  border-radius: 0.5rem;
+
+  background: var(--color-background-secondary);
+
+  .icon-search {
+    flex: 0 0 auto;
+    margin-right: 0.375rem;
+    color: var(--color-text-secondary);
+  }
+}
+
+.server-account-shell-input {
+  flex: 1 1 auto;
+
+  min-width: 0;
+  padding: 0;
+  border: 0;
+
+  font-size: 0.875rem;
+  color: var(--color-text);
+
+  background: transparent;
+  outline: none;
+}
+
+.server-account-shell-clear {
+  cursor: pointer;
+
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+
+  color: var(--color-text-secondary);
+
+  background: transparent;
+}
+
+.server-account-shell-summary {
+  flex: 0 0 auto;
+  padding: 0 0.75rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.server-account-shell-error {
+  flex: 0 0 auto;
+
+  margin: 0 0.75rem 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  color: var(--color-error);
+
+  background: rgba(var(--color-error-rgb), 0.08);
+}
+
+.server-account-shell-list {
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex: 1 1 auto;
+
+  min-height: 0;
+  padding: 0 0.5rem 0.5rem;
+}
+
+.server-account-shell-item {
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+
+  width: 100%;
+  min-height: 4.5rem;
+  margin: 0;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 0.5rem;
+
+  text-align: left;
+
+  background: transparent;
+  outline: none;
+
+  transition: background-color 150ms ease;
+
+  &:hover {
+    background: var(--color-chat-hover);
+  }
+
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px rgba(var(--color-primary-rgb), 0.32);
+  }
+
+  &.selected {
+    background: var(--color-chat-active);
+
+    .server-account-shell-title,
+    .server-account-shell-meta,
+    .server-account-shell-status {
+      color: var(--color-white);
+    }
+  }
+}
+
+.server-account-shell-avatar {
+  overflow: hidden;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+
+  width: 2.625rem;
+  height: 2.625rem;
+  margin-right: 0.625rem;
+  border-radius: 50%;
+
+  font-weight: var(--font-weight-medium);
+  color: white;
+
+  background: var(--color-primary);
+}
+
+.server-account-shell-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.server-account-shell-info {
+  overflow: hidden;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+
+  min-width: 0;
+}
+
+.server-account-shell-title,
+.server-account-shell-meta,
+.server-account-shell-status,
+.server-account-shell-rail-title,
+.server-account-shell-rail-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-account-shell-title {
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25rem;
+  color: var(--color-text);
+}
+
+.server-account-shell-meta,
+.server-account-shell-status {
+  font-size: 0.75rem;
+  line-height: 1.0625rem;
+  color: var(--color-text-secondary);
+}
+
+.server-account-shell-dot {
+  display: inline-block;
+
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.25rem;
+  border-radius: 50%;
+
+  background: var(--color-text-secondary);
+
+  &.online {
+    background: var(--color-green);
+  }
+}
+
+.server-account-shell-empty {
+  padding: 2rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.server-account-shell-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--color-background);
+}
+
+.server-account-shell-rail {
+  position: relative;
+  z-index: 3;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+
+  min-width: 0;
+  height: 100%;
+  padding: 0.625rem 0.375rem;
+  border-right: 1px solid var(--color-borders);
+
+  background: var(--color-background);
+}
+
+.server-account-shell-rail-top,
+.server-account-shell-rail-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.server-account-shell-rail-account {
+  cursor: pointer;
+
+  position: relative;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+
+  background: transparent;
+  outline: none;
+
+  &:focus-visible {
+    .server-account-shell-rail-avatar {
+      box-shadow: 0 0 0 2px rgba(var(--color-primary-rgb), 0.32);
+    }
+  }
+}
+
+.server-account-shell-rail-avatar {
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-medium);
+  color: white;
+
+  background: var(--color-primary);
+}
+
+.server-account-shell-rail-card {
+  pointer-events: none;
+
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  left: calc(100% + 0.625rem);
+  transform: translateX(-0.25rem);
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+
+  width: 13.5rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--color-borders);
+  border-radius: 0.5rem;
+
+  font-size: 0.75rem;
+  line-height: 1.125rem;
+  color: var(--color-text-secondary);
+  text-align: left;
+
+  opacity: 0;
+  background: var(--color-background);
+  box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.14);
+
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.server-account-shell-rail-title {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--color-text);
+}
+
+.server-account-shell-rail-account:hover,
+.server-account-shell-rail-account:focus-visible {
+  .server-account-shell-rail-card {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.server-account-shell-settings-menu {
+  .bubble {
+    right: auto;
+    left: calc(100% + 0.5rem);
+  }
+
+  .Button {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}
