@@ -38,6 +38,7 @@ import {
 import { ARE_CALLS_SUPPORTED, IS_APP } from '../../util/browser/windowEnvironment';
 import { isUserId } from '../../util/entities/ids';
 import focusNoScroll from '../../util/focusNoScroll';
+import { normalizeIntlLocale } from '../../util/localization/locale';
 
 import { useHotkeys } from '../../hooks/useHotkeys';
 import useLang from '../../hooks/useLang';
@@ -258,7 +259,7 @@ const HeaderActions: FC<OwnProps & StateProps> = ({
       return oldLang(langKey, name);
     }
 
-    const translatedNames = new Intl.DisplayNames([language], { type: 'language' });
+    const translatedNames = new Intl.DisplayNames([normalizeIntlLocale(language)], { type: 'language' });
     const translatedName = translatedNames.of(langCode)!;
     return oldLang(`${langKey}Other`, translatedName);
   }, [language, oldLang]);

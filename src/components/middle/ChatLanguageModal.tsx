@@ -16,6 +16,7 @@ import {
   selectTabState,
 } from '../../global/selectors';
 import buildClassName from '../../util/buildClassName';
+import { normalizeIntlLocale } from '../../util/localization/locale';
 import renderText from '../common/helpers/renderText';
 
 import useLastCallback from '../../hooks/useLastCallback';
@@ -81,10 +82,10 @@ const ChatLanguageModal: FC<OwnProps & StateProps> = ({
   });
 
   const translateLanguages = useMemo(() => SUPPORTED_TRANSLATION_LANGUAGES.map((langCode: string) => {
-    const translatedNames = new Intl.DisplayNames([currentLanguageCode], { type: 'language' });
+    const translatedNames = new Intl.DisplayNames([normalizeIntlLocale(currentLanguageCode)], { type: 'language' });
     const translatedName = translatedNames.of(langCode)!;
 
-    const originalNames = new Intl.DisplayNames([langCode], { type: 'language' });
+    const originalNames = new Intl.DisplayNames([normalizeIntlLocale(langCode)], { type: 'language' });
     const originalName = originalNames.of(langCode)!;
 
     return {

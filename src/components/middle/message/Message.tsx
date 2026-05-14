@@ -134,7 +134,12 @@ import buildStyle from '../../../util/buildStyle';
 import { isUserId } from '../../../util/entities/ids';
 import { getMessageKey } from '../../../util/keys/messageKey';
 import { parseTranslationCacheKey } from '../../../util/keys/translationKey';
+import { isServerAccountFrame } from '../../../util/serverAccounts';
 import { getServerTime } from '../../../util/serverTime';
+import {
+  getServerReceiveTranslationOptions,
+  isServerReceiveTranslationSuppressed,
+} from '../../../util/serverTools';
 import stopEvent from '../../../util/stopEvent';
 import { isElementInViewport } from '../../../util/visibility/isElementInViewport';
 import { calculateDimensionsForMessageMedia, getStickerDimensions, REM } from '../../common/helpers/mediaDimensions';
@@ -858,6 +863,7 @@ const Message = ({
     chatTranslations, chatId, shouldTranslate ? messageId : undefined, translationLanguageForHook,
     translationToneForHook,
   );
+  const [serverToolSettingsVersion, setServerToolSettingsVersion] = useState(0);
   const isSummaryPending = Boolean(summary?.isPending);
   const isNewTextPending = isTranslationPending || isSummaryPending;
   const previousTranslatedText = usePreviousDeprecated(translatedText, Boolean(shouldTranslate));
@@ -869,6 +875,30 @@ const Message = ({
   }, [isShowingSummary, summary?.text]);
 
   const currentTranslatedText = translatedText || previousTranslatedText;
+
+  useEffect(() => {
+    function handleServerToolSettingsUpdated() {
+      setServerToolSettingsVersion((version) => version + 1);
+    }
+
+    window.addEventListener('server-tool-settings-updated', handleServerToolSettingsUpdated);
+    return () => {
+      window.removeEventListener('server-tool-settings-updated', handleServerToolSettingsUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
+    const options = getServerReceiveTranslationOptions();
+    if (!isServerAccountFrame() || isOwn || !text?.text || requestedTranslationLanguage || !options) return;
+    if (isServerReceiveTranslationSuppressed(chatId, messageId, options.targetLang)) return;
+
+    // 服务账号模式接收自动翻译复用原生翻译缓存结构，实际请求已替换为后端翻译接口。
+    getActions().requestMessageTranslation({
+      chatId,
+      id: messageId,
+      toLanguageCode: options.targetLang,
+    });
+  }, [chatId, isOwn, messageId, requestedTranslationLanguage, serverToolSettingsVersion, text?.text]);
 
   const phoneCall = action?.type === 'phoneCall' ? action : undefined;
 

@@ -32,6 +32,7 @@ import AppInactive from './main/AppInactive';
 import LockScreen from './main/LockScreen.async';
 import Main from './main/Main.async';
 import ServerAccountShell from './main/ServerAccountShell';
+import ServerToolFrameBridge from './main/ServerToolFrameBridge';
 // import Test from './test/demo/MessageTextStreamingTest';
 import Transition from './ui/Transition';
 
@@ -263,6 +264,7 @@ const App = ({
       >
         {renderContent}
       </Transition>
+      {isServerAccountFrame() && <ServerToolFrameBridge />}
       {activeKey === AppScreens.auth && isTestServer && <div className="test-server-badge">Test server</div>}
       <Notifications />
     </UiLoader>

@@ -20,6 +20,7 @@ import {
 import buildClassName from '../../../util/buildClassName';
 import { formatDateAtTime, formatDateTimeToString } from '../../../util/dates/oldDateFormat';
 import { isoToEmoji } from '../../../util/emoji/emoji';
+import { normalizeIntlLocale } from '../../../util/localization/locale';
 import { getServerTime } from '../../../util/serverTime';
 import { callApi } from '../../../api/gramjs';
 import { LOCAL_TGS_URLS } from '../../common/helpers/animatedAssets';
@@ -79,7 +80,9 @@ const Giveaway = ({
 
   const countryList = useMemo(() => {
     if (isResults) return undefined;
-    const translatedNames = new Intl.DisplayNames([lang.code!, 'en'].filter(Boolean), { type: 'region' });
+    const translatedNames = new Intl.DisplayNames([normalizeIntlLocale(lang.code), 'en'].filter(Boolean), {
+      type: 'region',
+    });
     return giveaway?.countries?.map((countryCode) => (
       `${isoToEmoji(countryCode)}${NBSP}${translatedNames.of(countryCode)}`
     )).join(', ');

@@ -3,6 +3,7 @@ import { memo, useMemo, useRef } from '../../../lib/teact/teact';
 import type { ApiFactCheck, ApiPeerColor } from '../../../api/types';
 
 import buildClassName from '../../../util/buildClassName';
+import { normalizeIntlLocale } from '../../../util/localization/locale';
 import { renderTextWithEntities } from '../../common/helpers/renderTextWithEntities';
 
 import useCollapsibleLines from '../../../hooks/element/useCollapsibleLines';
@@ -38,7 +39,7 @@ const FactCheck = ({ factCheck, isToggleDisabled }: OwnProps) => {
   const countryLocalized = useMemo(() => {
     if (!factCheck.countryCode || !lang.code) return undefined;
 
-    const displayNames = new Intl.DisplayNames([lang.code], { type: 'region' });
+    const displayNames = new Intl.DisplayNames([normalizeIntlLocale(lang.code)], { type: 'region' });
     return displayNames.of(factCheck.countryCode);
   }, [factCheck.countryCode, lang.code]);
 

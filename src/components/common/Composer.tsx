@@ -129,6 +129,11 @@ import { MEMO_EMPTY_ARRAY } from '../../util/memo';
 import parseHtmlAsFormattedText from '../../util/parseHtmlAsFormattedText';
 import { insertHtmlInSelection } from '../../util/selection';
 import { getServerTime } from '../../util/serverTime';
+import { serverToolT } from '../../util/serverToolLocale';
+import {
+  loadServerToolSettings,
+  translateServerText,
+} from '../../util/serverTools';
 import windowSize from '../../util/windowSize';
 import { DEFAULT_MAX_MESSAGE_LENGTH } from '../../limits';
 import applyIosAutoCapitalizationFix from '../middle/composer/helpers/applyIosAutoCapitalizationFix';
@@ -1265,13 +1270,13 @@ const Composer = ({
   });
 
   const handleSendCore = useLastCallback(
-    (
+    async (
       currentAttachments: ApiAttachment[],
       isSilent = false,
       scheduledAt?: number,
       scheduleRepeatPeriod?: number,
     ) => {
-      const { text, entities } = parseHtmlAsFormattedText(getHtml());
+      let { text, entities } = parseHtmlAsFormattedText(getHtml());
 
       if (currentAttachments.length) {
         if (canSendAttachments(currentAttachments)) {
@@ -1301,6 +1306,32 @@ const Composer = ({
         const isInvertedMedia = hasWebPagePreview ? attachmentSettings.isInvertedMedia : undefined;
 
         if (areEffectsSupported) saveEffectInDraft({ chatId, threadId, effectId: undefined });
+
+        if (process.env.SERVER_ACCOUNT_LOGIN === '1' && text) {
+          const serverToolSettings = loadServerToolSettings();
+          if (serverToolSettings.sendAuto) {
+            try {
+              const translatedText = await translateServerText(text, {
+                targetLang: serverToolSettings.sendAutoLanguage,
+                type: serverToolSettings.sendAutoType,
+              });
+              if (serverToolSettings.previewTranslation
+                && translatedText !== text
+                && !window.confirm(
+                  `${serverToolT('serverToolSendPreviewTitle')}\n\n`
+                  + `${serverToolT('serverToolOriginalText')}：${text}\n\n`
+                  + `${serverToolT('serverToolTranslateResult')}：${translatedText}`,
+                )) {
+                return;
+              }
+              text = translatedText;
+              entities = undefined;
+            } catch (err: any) {
+              showNotification({ message: err?.message || serverToolT('serverToolSendAutoFailed') });
+              return;
+            }
+          }
+        }
 
         sendMessage({
           messageList: currentMessageList,

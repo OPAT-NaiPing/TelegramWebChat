@@ -35,6 +35,7 @@ import { getMessageKey, isLocalMessageId } from '../../util/keys/messageKey';
 import { parseTranslationCacheKey } from '../../util/keys/translationKey';
 import { isIpRevealingMedia } from '../../util/media/ipRevealingMedia';
 import { MEMO_EMPTY_ARRAY } from '../../util/memo';
+import { isServerAccountFrame } from '../../util/serverAccounts';
 import { getServerTime } from '../../util/serverTime';
 import { getDocumentExtension } from '../../components/common/helpers/documentInfo';
 import { API_GENERAL_ID_LIMIT } from '../../limits';
@@ -1459,7 +1460,8 @@ export function selectCanTranslateMessage<T extends GlobalState>(
 
   const canTranslateLanguage = !detectedLanguage || !doNotTranslate.includes(detectedLanguage);
 
-  const isTranslatable = isMessageTranslatable(message);
+  // 服务账号模式使用后端翻译接口，自己发送的消息也需要提供翻译入口。
+  const isTranslatable = isMessageTranslatable(message, isServerAccountFrame());
 
   // Separate translations are disabled when chat translation enabled
   const chatRequestedLanguage = selectRequestedChatTranslationLanguage(global, message.chatId, tabId);

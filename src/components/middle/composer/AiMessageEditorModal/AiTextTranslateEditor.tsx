@@ -6,6 +6,7 @@ import type { IAnchorPosition } from '../../../../types';
 
 import { SUPPORTED_TRANSLATION_LANGUAGES } from '../../../../config';
 import buildClassName from '../../../../util/buildClassName';
+import { normalizeIntlLocale } from '../../../../util/localization/locale';
 import { renderTextWithEntities } from '../../../common/helpers/renderTextWithEntities';
 
 import useFlag from '../../../../hooks/useFlag';
@@ -68,28 +69,29 @@ const AiTextTranslateEditor = ({
   const hasError = Boolean(error);
 
   const currentLanguageCode = lang.code;
+  const currentIntlLanguageCode = normalizeIntlLocale(currentLanguageCode);
 
   const languages = useMemo(() => SUPPORTED_TRANSLATION_LANGUAGES.map((langCode: string) => {
-    const displayNames = new Intl.DisplayNames([currentLanguageCode], { type: 'language' });
+    const displayNames = new Intl.DisplayNames([currentIntlLanguageCode], { type: 'language' });
     const displayName = displayNames.of(langCode) || langCode;
 
     return {
       langCode,
       displayName,
     };
-  }), [currentLanguageCode]);
+  }), [currentIntlLanguageCode]);
 
   const detectedLanguageName = useMemo(() => {
     if (!detectedLanguage) return undefined;
-    const displayNames = new Intl.DisplayNames([currentLanguageCode], { type: 'language' });
+    const displayNames = new Intl.DisplayNames([currentIntlLanguageCode], { type: 'language' });
     return displayNames.of(detectedLanguage);
-  }, [detectedLanguage, currentLanguageCode]);
+  }, [detectedLanguage, currentIntlLanguageCode]);
 
   const selectedLanguageName = useMemo(() => {
     if (!selectedLanguage) return undefined;
-    const displayNames = new Intl.DisplayNames([currentLanguageCode], { type: 'language' });
+    const displayNames = new Intl.DisplayNames([currentIntlLanguageCode], { type: 'language' });
     return displayNames.of(selectedLanguage);
-  }, [selectedLanguage, currentLanguageCode]);
+  }, [selectedLanguage, currentIntlLanguageCode]);
 
   const handleLanguageSelect = useLastCallback((langCode: string) => {
     setAiMessageEditorTranslateOptions({ selectedLanguage: langCode });

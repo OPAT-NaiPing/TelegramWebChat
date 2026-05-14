@@ -11,6 +11,7 @@ import { SettingsScreens } from '../../../types';
 import { selectIsCurrentUserPremium } from '../../../global/selectors';
 import { selectSharedSettings } from '../../../global/selectors/sharedState';
 import { IS_TRANSLATION_SUPPORTED } from '../../../util/browser/windowEnvironment';
+import { normalizeIntlLocale } from '../../../util/localization/locale';
 import { oldSetLanguage } from '../../../util/oldLangProvider';
 
 import useFlag from '../../../hooks/useFlag';
@@ -112,7 +113,7 @@ const SettingsLanguage: FC<OwnProps & StateProps> = ({
     }
 
     if (doNotTranslate.length === 1) {
-      const originalNames = new Intl.DisplayNames([language], { type: 'language' });
+      const originalNames = new Intl.DisplayNames([normalizeIntlLocale(language)], { type: 'language' });
       return originalNames.of(doNotTranslate[0])!;
     }
 

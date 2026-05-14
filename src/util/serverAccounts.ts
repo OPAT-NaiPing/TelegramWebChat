@@ -16,8 +16,19 @@ import {
   hasStoredSession,
 } from './sessions';
 
+// 系统指令从 0x0000 开始，命名对齐旧服务 Go 端常量，避免后续扩展时出现前后端语义偏差。
+export const SERVER_SYSTEM_CODES = {
+  System: 0x0000,
+  PushSystemOffline: 0x0001,
+  PushSystemErr: 0x0002,
+  SystemCleanSelected: 0x0003,
+  PushSystemTip: 0x0004,
+  SaveBrowserLog: 0x0005,
+  PushSystemUpdate: 0x0006,
+  InitSystem: 0x0007,
+} as const;
+
 const ACCOUNT_LIST_CODE = 0x1001;
-const INIT_SYSTEM_CODE = 0x0007;
 const DEFAULT_PAGE_SIZE = 50;
 const REQUEST_TIMEOUT = 30000;
 const WS_CONNECT_TIMEOUT = 15000;
@@ -25,6 +36,9 @@ const SERVER_ACCOUNT_STATE_KEY = 'serverAccountState';
 const SERVER_ACCOUNT_SLOT_MAP_KEY = 'serverAccountSlotMap';
 const SELECTED_SERVER_ACCOUNT_KEY_PREFIX = 'serverSelectedAccountId';
 const SERVER_ACCOUNT_FRAME_QUERY = 'serverAccountFrame';
+const SERVER_ACCOUNT_WS_REQUEST_TYPE = 'server-account-ws-request';
+const SERVER_ACCOUNT_WS_RESPONSE_TYPE = 'server-account-ws-response';
+const SERVER_ACCOUNT_SYSTEM_EVENT = 'server-account-system-message';
 
 type LoginResponse = {
   code?: number;
@@ -80,6 +94,36 @@ type AccountListResponse = {
   [key: string]: any;
 };
 
+export type ServerSystemMessage = AccountListResponse;
+
+type ServerAccountWsRequestMessage = {
+  type: typeof SERVER_ACCOUNT_WS_REQUEST_TYPE;
+  requestId: string;
+  payload: Record<string, any>;
+};
+
+type ServerAccountWsResponseMessage = {
+  type: typeof SERVER_ACCOUNT_WS_RESPONSE_TYPE;
+  requestId: string;
+  data?: unknown;
+  error?: string;
+};
+
+export const SERVER_TOOL_CODES = {
+  MATERIAL_GROUP_LIST: 0x5001,
+  MATERIAL_GROUP_CREATE: 0x5002,
+  MATERIAL_GROUP_UPDATE: 0x5003,
+  MATERIAL_GROUP_DELETE: 0x5004,
+  MATERIAL_GROUP_CLEAR: 0x5005,
+  MATERIAL_LIST: 0x5006,
+  MATERIAL_CREATE: 0x5007,
+  MATERIAL_UPDATE: 0x5008,
+  MATERIAL_DELETE: 0x5009,
+  TRANSLATE_CONFIG_GET: 0x9001,
+  TRANSLATE_CONFIG_SET: 0x9002,
+  TRANSLATE_TEXT: 0x9003,
+} as const;
+
 type ServerAccountState = {
   token: string;
   user?: ServerUserInfo;
@@ -91,6 +135,37 @@ type ServerAccountState = {
 let state: ServerAccountState | undefined;
 let socket: WebSocket | undefined;
 const pendingRequests = new Map<string, (value: AccountListResponse) => void>();
+
+function dispatchServerSystemMessage(message: ServerSystemMessage) {
+  window.dispatchEvent(new CustomEvent<ServerSystemMessage>(SERVER_ACCOUNT_SYSTEM_EVENT, { detail: message }));
+}
+
+export function addServerSystemMessageListener(listener: (message: ServerSystemMessage) => void) {
+  const eventListener = (event: Event) => {
+    listener((event as CustomEvent<ServerSystemMessage>).detail);
+  };
+
+  window.addEventListener(SERVER_ACCOUNT_SYSTEM_EVENT, eventListener);
+
+  return () => {
+    window.removeEventListener(SERVER_ACCOUNT_SYSTEM_EVENT, eventListener);
+  };
+}
+
+function formatBrowserLogReason(reason: any) {
+  if (!reason) return { message: '未知错误' };
+  if (reason instanceof Error) {
+    return {
+      message: reason.message,
+      stack: reason.stack,
+      name: reason.name,
+    };
+  }
+
+  return {
+    message: typeof reason === 'string' ? reason : JSON.stringify(reason),
+  };
+}
 
 function getSelectedAccountStorageKey() {
   return `${SELECTED_SERVER_ACCOUNT_KEY_PREFIX}_${ACCOUNT_SLOT || 1}`;
@@ -168,7 +243,7 @@ function restoreState() {
   return state;
 }
 
-function getRequiredState() {
+export function getRequiredServerState() {
   const currentState = restoreState();
   if (!currentState?.token) {
     throw new Error('旧服务登录态已失效，请重新登录');
@@ -183,7 +258,7 @@ function isServerAuthExpiredMessage(message?: string) {
   return /token|登录|登陆|鉴权|认证|授权|过期|失效|无效|未登录|401|403/i.test(message);
 }
 
-function getBaseApi() {
+export function getServerBaseApi() {
   return trimTrailingSlash(process.env.SERVER_BASE_API || process.env.BASE_API || '');
 }
 
@@ -199,7 +274,7 @@ function shouldSignValue(value: unknown) {
   return value !== '' && value !== undefined && !(typeof value === 'object' && !value);
 }
 
-function normalizeUrl(base: string, path: string) {
+export function normalizeServerUrl(base: string, path: string) {
   if (!base) return path;
   return `${trimTrailingSlash(base)}${path.startsWith('/') ? path : `/${path}`}`;
 }
@@ -339,7 +414,7 @@ function md5(input: string) {
   return hex(md51(unescape(encodeURIComponent(input))));
 }
 
-function getSignedHeaders(payload: object = {}) {
+export function getServerSignedHeaders(payload: object = {}) {
   const timestamp = Date.now().toString();
   const nonce = Math.random().toString(36).slice(-8);
   const paramsToSign = Object.fromEntries(
@@ -369,7 +444,7 @@ async function requestJson<T>(url: string, data: object, headers?: Record<string
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        ...getSignedHeaders(data),
+        ...getServerSignedHeaders(data),
         ...headers,
       },
       body: JSON.stringify(data),
@@ -387,13 +462,13 @@ async function requestJson<T>(url: string, data: object, headers?: Record<string
 }
 
 export async function loginServerAccount(username: string, password: string, token: string) {
-  const baseApi = getBaseApi();
+  const baseApi = getServerBaseApi();
   if (!baseApi) {
     throw new Error('未配置 SERVER_BASE_API');
   }
 
   const data = { username, password, captchaId: '', captcha: '', token };
-  const response = await requestJson<LoginResponse>(normalizeUrl(baseApi, '/base/login'), data);
+  const response = await requestJson<LoginResponse>(normalizeServerUrl(baseApi, '/base/login'), data);
 
   if (response.code !== 0 || !response.data?.token) {
     throw new Error(response.msg || '登录失败');
@@ -410,7 +485,7 @@ export async function loginServerAccount(username: string, password: string, tok
 }
 
 function buildWsUrl() {
-  const currentState = getRequiredState();
+  const currentState = getRequiredServerState();
 
   const configuredWs = getBaseWs();
   if (configuredWs) {
@@ -424,7 +499,7 @@ function buildWsUrl() {
     return configuredWs;
   }
 
-  const baseApi = getBaseApi();
+  const baseApi = getServerBaseApi();
   if (!baseApi) {
     throw new Error('未配置 SERVER_BASE_WS');
   }
@@ -460,6 +535,10 @@ function parseMessage(data: string): AccountListResponse | undefined {
 }
 
 function connectServerWs() {
+  if (isServerAccountFrame()) {
+    return Promise.reject(new Error('原生页面不直接创建业务 WebSocket，请通过外层页面转发请求'));
+  }
+
   if (socket?.readyState === WebSocket.OPEN) {
     return Promise.resolve(socket);
   }
@@ -481,7 +560,7 @@ function connectServerWs() {
       window.clearTimeout(timer);
       // 旧项目连接成功后会上报版本初始化包，保持服务端原有握手语义。
       socket!.send(JSON.stringify({
-        code: INIT_SYSTEM_CODE,
+        code: SERVER_SYSTEM_CODES.InitSystem,
         data: JSON.stringify({ info: { version: APP_VERSION } }),
       }));
       resolve(socket!);
@@ -491,9 +570,15 @@ function connectServerWs() {
       const data = await normalizeWsData(event.data);
       if (!data) return;
       const message = parseMessage(data);
-      if (!message?.uuid) return;
-      pendingRequests.get(message.uuid)?.(message);
-      pendingRequests.delete(message.uuid);
+      if (!message) return;
+      if (message.uuid && pendingRequests.has(message.uuid)) {
+        pendingRequests.get(message.uuid)?.(message);
+        pendingRequests.delete(message.uuid);
+        return;
+      }
+
+      // 没有匹配 uuid 的消息属于旧服务主动推送，系统指令需要交给外层 Shell 处理。
+      dispatchServerSystemMessage(message);
     };
 
     socket!.onerror = () => {
@@ -512,7 +597,7 @@ function connectServerWs() {
   });
 }
 
-function sendServerWsMessage<T = AccountListResponse>(message: Record<string, any>): Promise<T> {
+export function sendServerWsMessage<T = AccountListResponse>(message: Record<string, any>): Promise<T> {
   return new Promise((resolve, reject) => {
     const uuid = crypto.randomUUID();
     const timer = window.setTimeout(() => {
@@ -532,9 +617,151 @@ function sendServerWsMessage<T = AccountListResponse>(message: Record<string, an
   });
 }
 
+export async function sendServerWsMessageNowait(message: Record<string, any>) {
+  await connectServerWs();
+  socket!.send(JSON.stringify(message));
+}
+
+export async function cleanServerSelectedState() {
+  // 旧项目在清理本地选中状态时同步通知后端，防止旧服务继续按旧选择范围推送。
+  await sendServerWsMessageNowait({
+    code: SERVER_SYSTEM_CODES.SystemCleanSelected,
+  });
+}
+
+export async function saveServerBrowserLog(data: Record<string, any>) {
+  await sendServerWsMessageNowait({
+    code: SERVER_SYSTEM_CODES.SaveBrowserLog,
+    data: JSON.stringify(data),
+  });
+}
+
+export function setupServerBrowserLogReporter() {
+  const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+    if (isServerAccountFrame() || !restoreState()?.token) return;
+
+    const reason = formatBrowserLogReason(event.reason);
+    void saveServerBrowserLog({
+      version: APP_VERSION,
+      source: 'unhandledrejection',
+      ...reason,
+    }).catch(() => undefined);
+  };
+
+  window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+  return () => {
+    window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+  };
+}
+
+function requestServerWsViaShell<T = AccountListResponse>(message: Record<string, any>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    if (!window.parent || window.parent === window) {
+      reject(new Error('未找到外层页面，无法转发业务 WebSocket 请求'));
+      return;
+    }
+
+    const requestId = crypto.randomUUID();
+    const timer = window.setTimeout(() => {
+      window.removeEventListener('message', handleMessage);
+      reject(new Error('业务 WebSocket 转发请求超时'));
+    }, REQUEST_TIMEOUT);
+
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as ServerAccountWsResponseMessage;
+      if (data?.type !== SERVER_ACCOUNT_WS_RESPONSE_TYPE || data.requestId !== requestId) return;
+
+      window.clearTimeout(timer);
+      window.removeEventListener('message', handleMessage);
+      if (data.error) {
+        reject(new Error(data.error));
+        return;
+      }
+
+      resolve(data.data as T);
+    }
+
+    window.addEventListener('message', handleMessage);
+    window.parent.postMessage({
+      type: SERVER_ACCOUNT_WS_REQUEST_TYPE,
+      requestId,
+      payload: message,
+    } satisfies ServerAccountWsRequestMessage, window.location.origin);
+  });
+}
+
+export function isServerAccountWsRequestMessage(data: unknown): data is ServerAccountWsRequestMessage {
+  return Boolean(
+    data
+    && typeof data === 'object'
+    && (data as { type?: string }).type === SERVER_ACCOUNT_WS_REQUEST_TYPE
+    && typeof (data as { requestId?: unknown }).requestId === 'string'
+    && typeof (data as { payload?: unknown }).payload === 'object',
+  );
+}
+
+export async function handleServerAccountWsRequestMessage(event: MessageEvent) {
+  if (event.origin !== window.location.origin || !isServerAccountWsRequestMessage(event.data)) return;
+
+  const { requestId, payload } = event.data;
+  try {
+    const data = await requestServerWs(payload);
+    event.source?.postMessage({
+      type: SERVER_ACCOUNT_WS_RESPONSE_TYPE,
+      requestId,
+      data,
+    } satisfies ServerAccountWsResponseMessage, { targetOrigin: window.location.origin });
+  } catch (err: any) {
+    event.source?.postMessage({
+      type: SERVER_ACCOUNT_WS_RESPONSE_TYPE,
+      requestId,
+      error: err?.message || '业务 WebSocket 请求失败',
+    } satisfies ServerAccountWsResponseMessage, { targetOrigin: window.location.origin });
+  }
+}
+
+export async function requestServerWs<T = AccountListResponse>(message: Record<string, any>): Promise<T> {
+  if (isServerAccountFrame()) {
+    return requestServerWsViaShell<T>(message);
+  }
+
+  await connectServerWs();
+  return sendServerWsMessage<T>(message);
+}
+
+export function getServerUserInfo() {
+  return restoreState()?.user;
+}
+
+export async function changeServerPassword(data: {
+  username?: string;
+  password: string;
+  newPassword: string;
+}) {
+  const baseApi = getServerBaseApi();
+  if (!baseApi) {
+    throw new Error('未配置 SERVER_BASE_API');
+  }
+
+  const currentState = getRequiredServerState();
+  const response = await requestJson<{ code?: number; msg?: string }>(
+    normalizeServerUrl(baseApi, '/user/changePassword'),
+    data,
+    { 'x-token': currentState.token },
+  );
+
+  if (response.code !== 0) {
+    throw new Error(response.msg || '修改密码失败');
+  }
+
+  return response;
+}
+
 export async function fetchServerAccounts(content = '', offset?: unknown, searchType: number | string = 3) {
   await connectServerWs();
-  const currentState = getRequiredState();
+  const currentState = getRequiredServerState();
 
   const response = await sendServerWsMessage<AccountListResponse>({
     aid: 0,

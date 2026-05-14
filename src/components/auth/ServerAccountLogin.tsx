@@ -73,10 +73,9 @@ const ServerAccountLogin = () => {
     };
   }
 
-  async function loadFirstAccount() {
+  async function loadServerAccounts() {
     const result = await fetchAllServerAccounts('');
-    const firstAccount = result.accounts[0];
-    if (!firstAccount) {
+    if (!result.accounts.length) {
       throw new Error('没有可用账号');
     }
 
@@ -100,7 +99,7 @@ const ServerAccountLogin = () => {
     setError(undefined);
     try {
       await loginServerAccount(username, password, IS_TURNSTILE_REQUIRED ? turnstileToken : '');
-      await loadFirstAccount();
+      await loadServerAccounts();
     } catch (err: any) {
       setError(err?.message || '登录失败');
       setTurnstileToken('');
@@ -115,7 +114,7 @@ const ServerAccountLogin = () => {
       <div className={buildClassName('auth-form', 'server-account-form')}>
         <div id="logo" />
         <h1>登录后台账号</h1>
-        <p className="note">登录成功后会自动载入第一个服务器账号，并使用 dcid 和 auth key 连接 Telegram 官方 apiws。</p>
+        <p className="note">登录成功后进入主界面，请在账号列表中手动选择要载入的服务器账号。</p>
 
         <form className="form" action="" onSubmit={handleSubmit}>
           <InputText

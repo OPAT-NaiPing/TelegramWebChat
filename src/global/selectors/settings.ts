@@ -1,6 +1,8 @@
 import type { GlobalState } from '../types';
 
+import { normalizeIntlLocale } from '../../util/localization/locale';
 import { ACCOUNT_SLOT, getAccountsInfo } from '../../util/multiaccount';
+import { loadServerToolSettings } from '../../util/serverTools';
 import { selectSharedSettings } from './sharedState';
 
 export function selectNotifySettings<T extends GlobalState>(global: T) {
@@ -16,7 +18,7 @@ export function selectNotifyException<T extends GlobalState>(global: T, chatId: 
 }
 
 export function selectLanguageCode<T extends GlobalState>(global: T) {
-  return selectSharedSettings(global).language.replace('-raw', '');
+  return normalizeIntlLocale(selectSharedSettings(global).language.replace('-raw', ''));
 }
 
 export function selectCanSetPasscode<T extends GlobalState>(global: T) {
@@ -26,6 +28,10 @@ export function selectCanSetPasscode<T extends GlobalState>(global: T) {
 }
 
 export function selectTranslationLanguage<T extends GlobalState>(global: T) {
+  if (process.env.SERVER_ACCOUNT_LOGIN === '1') {
+    return loadServerToolSettings().receiveAutoLanguage;
+  }
+
   return global.settings.byKey.translationLanguage || selectLanguageCode(global);
 }
 

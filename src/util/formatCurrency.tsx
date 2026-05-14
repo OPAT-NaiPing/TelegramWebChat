@@ -4,6 +4,7 @@ import type { LangFn } from './localization';
 
 import { FALLBACK_LANG_CODE, STARS_CURRENCY_CODE, TON_CURRENCY_CODE } from '../config';
 import { formatStarsAsIcon, formatTonAsIcon } from './localization/format';
+import { normalizeIntlLocale } from './localization/locale';
 
 export function convertCurrencyFromBaseUnit(amount: number, currency: string) {
   return amount / 10 ** getCurrencyExp(currency);
@@ -58,9 +59,10 @@ export function formatCurrencyAsString(
   },
 ) {
   const price = convertCurrencyFromBaseUnit(totalPrice, currency);
+  const intlLocale = normalizeIntlLocale(locale);
 
   if ((options?.shouldOmitFractions || currency === STARS_CURRENCY_CODE) && Number.isInteger(price)) {
-    return new Intl.NumberFormat(locale, {
+    return new Intl.NumberFormat(intlLocale, {
       style: 'currency',
       currency,
       minimumFractionDigits: 0,
@@ -69,7 +71,7 @@ export function formatCurrencyAsString(
   }
 
   if (currency === TON_CURRENCY_CODE) {
-    return new Intl.NumberFormat(locale, {
+    return new Intl.NumberFormat(intlLocale, {
       style: 'currency',
       currency,
       minimumFractionDigits: 0,
@@ -77,7 +79,7 @@ export function formatCurrencyAsString(
     }).format(price);
   }
 
-  return new Intl.NumberFormat(locale, {
+  return new Intl.NumberFormat(intlLocale, {
     style: 'currency',
     currency,
   }).format(price);

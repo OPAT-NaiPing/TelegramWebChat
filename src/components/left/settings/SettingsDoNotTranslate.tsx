@@ -7,6 +7,7 @@ import type { AccountSettings } from '../../../types';
 
 import { SUPPORTED_TRANSLATION_LANGUAGES } from '../../../config';
 import buildClassName from '../../../util/buildClassName';
+import { normalizeIntlLocale } from '../../../util/localization/locale';
 
 import useHistoryBack from '../../../hooks/useHistoryBack';
 import useLang from '../../../hooks/useLang';
@@ -35,11 +36,12 @@ const SettingsDoNotTranslate = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const displayedOptionList: ItemPickerOption[] = useMemo(() => {
-    const translatedNames = new Intl.DisplayNames([language], { type: 'language' });
+    const intlLanguage = normalizeIntlLocale(language);
+    const translatedNames = new Intl.DisplayNames([intlLanguage], { type: 'language' });
     const options = SUPPORTED_TRANSLATION_LANGUAGES.map((langCode: string) => {
       const translatedName = translatedNames.of(langCode);
 
-      const originalName = new Intl.DisplayNames([langCode], { type: 'language' })
+      const originalName = new Intl.DisplayNames([normalizeIntlLocale(langCode)], { type: 'language' })
         .of(langCode);
 
       if (!translatedName || !originalName) {

@@ -534,5 +534,5 @@ export function formatRegistrationMonth(lang: string, dateString: string) {
   const [month, year] = dateString.split('.');
   const date = new Date(`${year}-${month}`);
 
-  return new Intl.DateTimeFormat(lang, { month: 'long', year: 'numeric' }).format(date);
+  return new Intl.DateTimeFormat(normalizeIntlLocale(lang), { month: 'long', year: 'numeric' }).format(date);
 }

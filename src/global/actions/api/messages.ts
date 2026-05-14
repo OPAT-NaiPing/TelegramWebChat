@@ -18,6 +18,7 @@ import type {
   SendMessageParams,
   TextSummary,
   ThreadId,
+  TranslationTone,
 } from '../../../types';
 import type { MessageKey } from '../../../util/keys/messageKey';
 import type { RequiredGlobalActions } from '../../index';
@@ -60,7 +61,15 @@ import { getTranslationFn, type RegularLangFnParameters } from '../../../util/lo
 import { formatStarsAsText } from '../../../util/localization/format';
 import { oldTranslate } from '../../../util/oldLangProvider';
 import { debounce, onTickEnd, rafPromise } from '../../../util/schedulers';
+import { isServerAccountFrame } from '../../../util/serverAccounts';
 import { getServerTime } from '../../../util/serverTime';
+import {
+  allowServerReceiveTranslation,
+  isServerReceiveTranslationSuppressed,
+  loadServerToolSettings,
+  suppressServerReceiveTranslation,
+  translateServerText,
+} from '../../../util/serverTools';
 import { callApi, cancelApiProgress } from '../../../api/gramjs';
 import {
   getIsSavedDialog,
@@ -2895,14 +2904,22 @@ addActionHandler('forwardStory', (global, actions, payload): ActionReturnType =>
 
 addActionHandler('requestMessageTranslation', (global, actions, payload): ActionReturnType => {
   const {
-    chatId, id, toLanguageCode = selectTranslationLanguage(global), tone, tabId = getCurrentTabId(),
+    chatId, id, toLanguageCode, tone, tabId = getCurrentTabId(),
   } = payload;
+  const serverToolSettings = process.env.SERVER_ACCOUNT_LOGIN === '1' ? loadServerToolSettings() : undefined;
+  const resolvedToLanguageCode = toLanguageCode
+    || serverToolSettings?.receiveAutoLanguage
+    || selectTranslationLanguage(global);
 
-  global = updateRequestedMessageTranslation(global, chatId, id, toLanguageCode, tone, tabId);
+  if (process.env.SERVER_ACCOUNT_LOGIN === '1') {
+    allowServerReceiveTranslation(chatId, id, resolvedToLanguageCode);
+  }
+
+  global = updateRequestedMessageTranslation(global, chatId, id, resolvedToLanguageCode, tone, tabId);
 
   if (!tone) {
     global = replaceSettings(global, {
-      translationLanguage: toLanguageCode,
+      translationLanguage: resolvedToLanguageCode,
     });
   }
 
@@ -2913,6 +2930,10 @@ addActionHandler('showOriginalMessage', (global, actions, payload): ActionReturn
   const {
     chatId, id, tabId = getCurrentTabId(),
   } = payload;
+
+  if (process.env.SERVER_ACCOUNT_LOGIN === '1') {
+    suppressServerReceiveTranslation(chatId, id);
+  }
 
   global = removeRequestedMessageTranslation(global, chatId, id, tabId);
 
@@ -2941,6 +2962,17 @@ addActionHandler('translateMessages', (global, actions, payload): ActionReturnTy
   const chat = selectChat(global, chatId);
   if (!chat) return undefined;
 
+  if (isServerAccountFrame()) {
+    const allowedMessageIds = messageIds.filter((messageId) => {
+      return !isServerReceiveTranslationSuppressed(chatId, messageId, toLanguageCode);
+    });
+    if (!allowedMessageIds.length) return global;
+
+    actions.markMessagesTranslationPending({ chatId, messageIds: allowedMessageIds, toLanguageCode, tone });
+    void translateMessagesWithServerBackend(chatId, allowedMessageIds, toLanguageCode, tone);
+    return global;
+  }
+
   actions.markMessagesTranslationPending({ chatId, messageIds, toLanguageCode, tone });
 
   callApi('translateText', {
@@ -2952,6 +2984,47 @@ addActionHandler('translateMessages', (global, actions, payload): ActionReturnTy
 
   return global;
 });
+
+async function translateMessagesWithServerBackend(
+  chatId: string,
+  messageIds: number[],
+  toLanguageCode: string,
+  tone?: TranslationTone,
+) {
+  let global = getGlobal();
+  const settings = loadServerToolSettings();
+  const translations = await Promise.all(messageIds.map(async (messageId) => {
+    const message = selectChatMessage(global, chatId, messageId);
+    const content = message?.content.text?.text;
+    if (!content) return { text: '' };
+
+    const text = await translateServerText(content, {
+      targetLang: toLanguageCode,
+      type: settings.receiveAutoType || settings.sendAutoType || 1,
+      msgID: String(messageId),
+    });
+    return { text };
+  })).catch(() => undefined);
+
+  global = getGlobal();
+  if (!translations) {
+    messageIds.forEach((messageId) => {
+      global = updateMessageTranslation(global, chatId, messageId, toLanguageCode, {
+        text: undefined,
+        isPending: false,
+      }, tone);
+    });
+  } else {
+    translations.forEach((text, index) => {
+      global = updateMessageTranslation(global, chatId, messageIds[index], toLanguageCode, {
+        text: text.text ? text : undefined,
+        isPending: false,
+      }, tone);
+    });
+  }
+
+  setGlobal(global);
+}
 
 addActionHandler('summarizeMessage', async (global, actions, payload): Promise<void> => {
   const { chatId, id, toLanguageCode } = payload;
