@@ -70,6 +70,7 @@ type TelegramClientParams = {
   langCode: string;
   langPack: string;
   systemLangCode: string;
+  params?: Api.TypeJSONValue;
   baseLogger: string | Logger;
   useWSS: boolean;
   additionalDcsDisabled: boolean;
@@ -269,6 +270,7 @@ class TelegramClient {
           langCode: args.langCode,
           langPack: args.langPack,
           systemLangCode: args.systemLangCode,
+          params: args.params,
           query: x,
           proxy: undefined, // no proxies yet.
         }),

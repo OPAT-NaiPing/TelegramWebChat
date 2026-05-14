@@ -85,6 +85,38 @@ const ABORT_CONTROLLERS = new Map<string, AbortController>();
 let client: TelegramClient;
 let currentUserId: string | undefined;
 
+function buildGramJsJsonValue(data: unknown): GramJs.TypeJSONValue {
+  const nullValue = globalThis.JSON.parse('null');
+  if (typeof data === 'undefined' || data === nullValue) {
+    return new GramJs.JsonNull();
+  }
+
+  if (Array.isArray(data)) {
+    return new GramJs.JsonArray({
+      value: data.map(buildGramJsJsonValue),
+    });
+  }
+
+  if (typeof data === 'string') {
+    return new GramJs.JsonString({ value: data });
+  }
+
+  if (typeof data === 'number') {
+    return new GramJs.JsonNumber({ value: data });
+  }
+
+  if (typeof data === 'boolean') {
+    return new GramJs.JsonBool({ value: data });
+  }
+
+  return new GramJs.JsonObject({
+    value: Object.entries(data as Record<string, unknown>).map(([key, value]) => new GramJs.JsonObjectValue({
+      key,
+      value: buildGramJsJsonValue(value),
+    })),
+  });
+}
+
 export async function init(initialArgs: ApiInitialArgs, onConnected?: NoneToVoidFunction) {
   if (DEBUG) {
     // eslint-disable-next-line no-console
@@ -99,6 +131,8 @@ export async function init(initialArgs: ApiInitialArgs, onConnected?: NoneToVoid
   } = initialArgs;
 
   const session = new sessions.CallbackSession(sessionData, onSessionUpdate);
+  const serverDeviceConfig = sessionData?.serverDeviceConfig;
+  const serverDeviceParams = serverDeviceConfig?.params;
 
   (self as any).isWebmSupported = isWebmSupported;
 
@@ -106,21 +140,22 @@ export async function init(initialArgs: ApiInitialArgs, onConnected?: NoneToVoid
 
   client = new TelegramClient(
     session,
-    Number(process.env.TELEGRAM_API_ID),
-    process.env.TELEGRAM_API_HASH,
+    serverDeviceConfig?.apiId || Number(process.env.TELEGRAM_API_ID),
+    serverDeviceConfig?.apiHash || process.env.TELEGRAM_API_HASH,
     {
-      deviceModel: navigator.userAgent || userAgent || DEFAULT_USER_AGENT,
-      systemVersion: platform || DEFAULT_PLATFORM,
-      appVersion: `${APP_VERSION} ${APP_CODE_NAME}`,
+      deviceModel: serverDeviceConfig?.deviceModel || navigator.userAgent || userAgent || DEFAULT_USER_AGENT,
+      systemVersion: serverDeviceConfig?.systemVersion || platform || DEFAULT_PLATFORM,
+      appVersion: serverDeviceConfig?.appVersion || `${APP_VERSION} ${APP_CODE_NAME}`,
       useWSS: true,
       additionalDcsDisabled: IS_TEST,
       shouldDebugExportedSenders,
       shouldForceHttpTransport,
       shouldAllowHttpTransport,
       dcId,
-      langPack: LANG_PACK,
-      langCode,
-      systemLangCode: navigator.language,
+      langPack: serverDeviceConfig?.langPack || LANG_PACK,
+      langCode: serverDeviceConfig?.langCode || langCode,
+      systemLangCode: serverDeviceConfig?.systemLangCode || navigator.language,
+      params: serverDeviceParams ? buildGramJsJsonValue(serverDeviceParams) : undefined,
       isTestServerRequested,
     } as any,
   );

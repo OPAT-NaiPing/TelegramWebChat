@@ -27,6 +27,7 @@ import type {
   ApiPhoto,
   ApiReaction,
   ApiReactionWithPaid,
+  ApiServerDeviceConfig,
   ApiStarGiftAttributeIdBackdrop,
   ApiStarGiftAttributeIdPattern,
   ApiStarGiftRegular,
@@ -68,6 +69,7 @@ export type SharedSessionData = {
   date?: number;
   dcId: number;
   isTest?: true;
+  serverDeviceConfig?: ApiServerDeviceConfig;
 } & Partial<Record<`dc${DcId}_${'auth_key' | 'server_salt'}`, string>> & SessionUserInfo;
 
 export type AccountInfo = {

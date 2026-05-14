@@ -516,7 +516,7 @@ const ServerAccountShell = () => {
             <i className="icon icon-user" />
             <strong className="server-account-shell-placeholder-title">请选择账号</strong>
             <span className="server-account-shell-placeholder-text">
-              登录成功后不会自动载入第一个账号，请在左侧账号列表中手动选择。
+              请注意选择账号前,请确保当前账号在控中不是在线状态!
             </span>
           </div>
         )}

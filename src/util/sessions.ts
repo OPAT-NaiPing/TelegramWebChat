@@ -114,6 +114,7 @@ export function loadStoredSession(): ApiSessionData | undefined {
       return acc;
     }, {} as Record<number, string>),
     isTest: slotData.isTest || undefined,
+    serverDeviceConfig: slotData.serverDeviceConfig,
   };
 
   return sessionData;

@@ -1,6 +1,6 @@
 import { gunzipSync } from 'fflate';
 
-import type { ApiSessionData } from '../api/types';
+import type { ApiServerDeviceConfig, ApiSessionData } from '../api/types';
 import type { GlobalState } from '../global/types';
 import type { SharedSessionData } from '../types';
 
@@ -79,6 +79,9 @@ export type ServerAccount = {
   auth_key?: string;
   authkey?: string;
   auth?: string;
+  cache?: string;
+  Cache?: string;
+  mode?: number | string;
   keys?: Record<string, string>;
   [key: string]: any;
 };
@@ -832,7 +835,9 @@ function normalizeAuthKey(authKey: string) {
 }
 
 function pickDcId(account: ServerAccount) {
-  return Number(account.dcid ?? account.dcId ?? account.dcID ?? account.DCID);
+  return Number(
+    account.dcid ?? account.dcId ?? account.dcID ?? account.DCID ?? parseServerAccountCacheJson(account)?.dc,
+  );
 }
 
 function pickAuthKey(account: ServerAccount, dcId: number) {
@@ -841,7 +846,80 @@ function pickAuthKey(account: ServerAccount, dcId: number) {
     ?? account.authkey
     ?? account.auth
     ?? account.keys?.[dcId]
-    ?? account.keys?.[String(dcId)];
+    ?? account.keys?.[String(dcId)]
+    ?? parseServerAccountCacheJson(account)?.key;
+}
+
+function pickServerAccountCache(account: ServerAccount) {
+  return account.cache || account.Cache;
+}
+
+function parseServerAccountCacheJson(account: ServerAccount) {
+  const cache = pickServerAccountCache(account);
+  if (!cache) return undefined;
+
+  try {
+    return JSON.parse(cache);
+  } catch (err) {
+    return undefined;
+  }
+}
+
+function normalizeServerDeviceMode(mode: unknown, apiId?: number): number | undefined {
+  const numericMode = Number(mode);
+  if ([1, 2, 3, 4].includes(numericMode)) return numericMode;
+
+  // gotd 侧会根据 AppId 强制纠正设备类型，这里保持同样的兜底。
+  if (apiId === 4) return 1;
+  if (apiId === 8) return 2;
+  if (apiId === 2040) return 3;
+
+  return undefined;
+}
+
+function parseServerAccountCache(account: ServerAccount): ApiServerDeviceConfig | undefined {
+  const parsed = parseServerAccountCacheJson(account);
+  if (!parsed) return undefined;
+
+  try {
+    const info = parsed?.info || {};
+    const apiId = Number(info.id);
+    const mode = normalizeServerDeviceMode(info.mode ?? account.mode, Number.isFinite(apiId) ? apiId : undefined);
+    const tzOffset = Number(info.tz_offset);
+    const params: ApiServerDeviceConfig['params'] = {};
+
+    if (mode === 1 || mode === 4) {
+      if (info.device_token) params.device_token = String(info.device_token);
+      if (info.data) params.data = String(info.data);
+      if (info.installer) params.installer = String(info.installer);
+      if (info.package_id) params.package_id = String(info.package_id);
+      if (Number.isFinite(tzOffset)) params.tz_offset = tzOffset;
+      params.perf_cat = 2;
+    } else if (mode === 2) {
+      if (info.device_token) params.device_token = String(info.device_token);
+      if (info.bundleId) params.bundleId = String(info.bundleId);
+      if (Number.isFinite(tzOffset)) params.tz_offset = tzOffset;
+      params.device_token_type = 'apns';
+      params.device_token_environment = 'production';
+    } else if (mode === 3) {
+      if (Number.isFinite(tzOffset)) params.tz_offset = tzOffset;
+    }
+
+    return {
+      apiId: Number.isFinite(apiId) ? apiId : undefined,
+      apiHash: info.hash ? String(info.hash) : undefined,
+      deviceModel: info.dm ? String(info.dm) : undefined,
+      systemVersion: info.sv ? String(info.sv) : undefined,
+      appVersion: info.ver ? String(info.ver) : undefined,
+      systemLangCode: info.sl ? String(info.sl) : undefined,
+      langPack: info.lp ? String(info.lp) : undefined,
+      langCode: info.lc ? String(info.lc) : undefined,
+      mode,
+      params: Object.keys(params).length ? params : undefined,
+    };
+  } catch (err) {
+    return undefined;
+  }
 }
 
 export function getAccountTitle(account: ServerAccount) {
@@ -901,7 +979,8 @@ function getSharedSessionAuthKey(data: SharedSessionData) {
 function isSameServerSharedSession(current: SharedSessionData | undefined, next: SharedSessionData) {
   return current?.serverAccountId === next.serverAccountId
     && current?.dcId === next.dcId
-    && getSharedSessionAuthKey(current) === getSharedSessionAuthKey(next);
+    && getSharedSessionAuthKey(current) === getSharedSessionAuthKey(next)
+    && JSON.stringify(current?.serverDeviceConfig || {}) === JSON.stringify(next.serverDeviceConfig || {});
 }
 
 export function getSelectedServerAccountId() {
@@ -955,6 +1034,7 @@ function buildSharedSessionFromServerAccount(account: ServerAccount): SharedSess
   const sessionData = buildSessionFromServerAccount(account);
   const title = getAccountTitle(account);
   const serverAccountId = getServerAccountId(account);
+  const serverDeviceConfig = parseServerAccountCache(account);
   const sharedSessionData: SharedSessionData = {
     dcId: sessionData.mainDcId,
     isTest: sessionData.isTest,
@@ -964,6 +1044,7 @@ function buildSharedSessionFromServerAccount(account: ServerAccount): SharedSess
     avatarUri: account.avatarUri || account.headimg,
     serverAccountId,
     serverAccountTitle: title,
+    serverDeviceConfig,
   };
 
   Object.keys(sessionData.keys).map(Number).forEach((dcId) => {
@@ -992,6 +1073,7 @@ export function importServerAccountSession(account: ServerAccount) {
       [sharedSessionData.dcId]: sharedSessionData[`dc${sharedSessionData.dcId as 1 | 2 | 3 | 4 | 5}_auth_key`]!,
     },
     isTest: sharedSessionData.isTest,
+    serverDeviceConfig: sharedSessionData.serverDeviceConfig,
   };
 }
 

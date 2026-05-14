@@ -125,7 +125,21 @@ export interface ApiSessionData {
   mainDcId: number;
   keys: Record<number, string>;
   isTest?: true;
+  serverDeviceConfig?: ApiServerDeviceConfig;
 }
+
+export type ApiServerDeviceConfig = {
+  apiId?: number;
+  apiHash?: string;
+  deviceModel?: string;
+  systemVersion?: string;
+  appVersion?: string;
+  systemLangCode?: string;
+  langPack?: string;
+  langCode?: string;
+  mode?: number;
+  params?: Record<string, string | number | boolean>;
+};
 
 export type ApiNotification = {
   localId: string;
