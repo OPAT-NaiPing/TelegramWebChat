@@ -27,6 +27,7 @@ import {
   fetchServerMaterials,
   fetchServerTranslateConfig,
   loadServerToolSettings,
+  mergeServerTranslateConfigToSettings,
   postServerToolMessageToFrame,
   saveServerToolSettings,
   saveServerTranslateConfig,
@@ -220,15 +221,7 @@ const ServerToolPanel = ({
     try {
       const config = await fetchServerTranslateConfig(0);
       const savedSettings = loadServerToolSettings();
-      const nextSettings = {
-        ...savedSettings,
-        sendAuto: Boolean(config.sendAuto),
-        sendAutoLanguage: config.sendAutoLanguage || savedSettings.sendAutoLanguage,
-        sendAutoType: config.sendAutoType || savedSettings.sendAutoType,
-        receiveAuto: Boolean(config.receiveAuto),
-        receiveAutoLanguage: config.receiveAutoLanguage || savedSettings.receiveAutoLanguage,
-        receiveAutoType: config.receiveAutoType || savedSettings.receiveAutoType,
-      };
+      const nextSettings = mergeServerTranslateConfigToSettings(config, savedSettings);
 
       setTranslateConfig(config);
       setLoadedTranslateConfig(true);
@@ -455,13 +448,26 @@ const ServerToolPanel = ({
       receiveAuto: settings.receiveAuto,
       receiveAutoType: settings.receiveAutoType,
       receiveAutoLanguage: settings.receiveAutoLanguage,
+      imgAuto: Boolean(translateConfig?.imgAuto),
+      voiceAuto: Boolean(translateConfig?.voiceAuto),
     };
 
     setIsLoading(true);
     try {
       await saveServerTranslateConfig(config);
+      const nextSettings = {
+        ...settings,
+        sendAuto: Boolean(config.sendAuto),
+        sendAutoType: config.sendAutoType,
+        sendAutoLanguage: config.sendAutoLanguage,
+        receiveAuto: Boolean(config.receiveAuto),
+        receiveAutoType: config.receiveAutoType,
+        receiveAutoLanguage: config.receiveAutoLanguage,
+      };
       setTranslateConfig(config);
-      saveServerToolSettings(settings);
+      setSettings(nextSettings);
+      saveServerToolSettings(nextSettings);
+      postServerToolMessageToFrame(frame, { type: 'server-tool-settings-updated', settings: nextSettings });
       setMessage(serverToolT('serverToolTranslateSaved'));
     } catch (err: any) {
       setMessage(err?.message || serverToolT('serverToolSaveTranslateFailed'));

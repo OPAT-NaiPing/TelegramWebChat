@@ -2,7 +2,7 @@
   position: relative;
 
   display: grid;
-  grid-template-columns: var(--server-account-sidebar-width, 20rem) 3.25rem minmax(0, 1fr) 3.25rem;
+  grid-template-columns: var(--server-account-sidebar-width, 20rem) minmax(0, 1fr) 3.25rem;
 
   width: 100%;
   height: 100%;
@@ -18,7 +18,7 @@
   }
 
   &.is-sidebar-collapsed {
-    grid-template-columns: 3.25rem minmax(0, 1fr) 3.25rem;
+    grid-template-columns: var(--folders-sidebar-width) minmax(0, 1fr) 3.25rem;
 
     .server-account-shell-sidebar {
       display: none;
@@ -28,13 +28,47 @@
   &.with-tool-panel {
     grid-template-columns:
       var(--server-account-sidebar-width, 20rem)
-      3.25rem
       minmax(0, 1fr)
       3.25rem
       var(--server-tool-panel-width, 22rem);
 
     &.is-sidebar-collapsed {
-      grid-template-columns: 3.25rem minmax(0, 1fr) 3.25rem var(--server-tool-panel-width, 22rem);
+      grid-template-columns:
+        var(--folders-sidebar-width)
+        minmax(0, 1fr)
+        3.25rem
+        var(--server-tool-panel-width, 22rem);
+    }
+  }
+
+  &:not(.is-sidebar-collapsed) {
+    .server-account-shell-rail {
+      display: none;
+    }
+  }
+
+  @media (max-width: 925px) {
+    grid-template-columns: var(--folders-sidebar-width) minmax(0, 1fr) 3.25rem;
+
+    &.with-tool-panel,
+    &.with-tool-panel.is-sidebar-collapsed {
+      grid-template-columns: var(--folders-sidebar-width) minmax(0, 1fr) 3.25rem;
+    }
+
+    &:not(.is-sidebar-collapsed) {
+      .server-account-shell-rail {
+        display: flex;
+      }
+    }
+  }
+
+  @media (max-width: 600px) {
+    grid-template-columns: 3.5rem minmax(0, 1fr) 3rem;
+
+    &.is-sidebar-collapsed,
+    &.with-tool-panel,
+    &.with-tool-panel.is-sidebar-collapsed {
+      grid-template-columns: 3.5rem minmax(0, 1fr) 3rem;
     }
   }
 }
@@ -51,6 +85,25 @@
   border-right: 1px solid var(--color-borders);
 
   background: var(--color-background);
+
+  @media (max-width: 925px) {
+    position: absolute;
+    z-index: 20;
+    top: 0;
+    bottom: 0;
+    left: var(--folders-sidebar-width);
+
+    width: min(26.5rem, calc(100vw - var(--folders-sidebar-width)));
+    max-width: none;
+    border-right: 1px solid var(--color-borders);
+
+    box-shadow: 0.25rem 0 1.25rem rgba(0, 0, 0, 0.16);
+  }
+
+  @media (max-width: 600px) {
+    left: 3.5rem;
+    width: calc(100vw - 6.5rem);
+  }
 }
 
 .server-account-shell-resizer {
@@ -90,6 +143,10 @@
   #ServerAccountShell.is-resizing-sidebar &::after {
     opacity: 1;
   }
+
+  @media (max-width: 925px) {
+    display: none;
+  }
 }
 
 .server-account-shell-header {
@@ -124,6 +181,10 @@
   gap: 0.5rem;
 
   padding: 0 0.75rem 0.5rem;
+
+  @media (max-width: 360px) {
+    grid-template-columns: 1fr;
+  }
 }
 
 .server-account-shell-select {
@@ -311,6 +372,9 @@
 
 .server-account-shell-meta,
 .server-account-shell-status {
+  display: flex;
+  align-items: center;
+
   font-size: 0.75rem;
   line-height: 1.0625rem;
   color: var(--color-text-secondary);
@@ -328,6 +392,57 @@
 
   &.online {
     background: var(--color-green);
+  }
+
+  &.direct {
+    background: var(--color-green);
+  }
+
+  &.attention {
+    background: var(--color-orange);
+  }
+}
+
+.server-account-shell-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: fit-content;
+  min-width: 2.125rem;
+  max-width: 100%;
+  height: 1.125rem;
+  padding: 0 0.375rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  white-space: nowrap;
+
+  &.color-success {
+    border-color: rgba(var(--color-green-rgb), 0.24);
+    color: var(--color-green);
+    background: rgba(var(--color-green-rgb), 0.12);
+  }
+
+  &.color-warning {
+    border-color: rgba(251, 140, 0, 0.24);
+    color: var(--color-warning);
+    background: rgba(251, 140, 0, 0.12);
+  }
+
+  &.color-danger {
+    border-color: rgba(var(--color-error-rgb), 0.24);
+    color: var(--color-error);
+    background: rgba(var(--color-error-rgb), 0.12);
+  }
+
+  &.color-info,
+  &.color-default {
+    border-color: rgba(var(--color-text-secondary-rgb), 0.2);
+    color: var(--color-text-secondary);
+    background: rgba(var(--color-text-secondary-rgb), 0.08);
   }
 }
 
@@ -374,6 +489,23 @@
   }
 }
 
+.server-account-shell-disconnected {
+  .icon {
+    color: var(--color-warning);
+  }
+}
+
+.server-account-shell-reconnect-button {
+  align-self: center;
+
+  width: auto !important;
+  min-width: 5rem;
+  height: 2rem !important;
+  padding: 0.25rem 0.75rem !important;
+
+  font-size: 0.8125rem;
+}
+
 .server-account-shell-placeholder-title {
   font-size: 1.125rem;
   font-weight: var(--font-weight-medium);
@@ -395,12 +527,17 @@
   align-items: center;
   justify-content: space-between;
 
+  width: var(--folders-sidebar-width);
   min-width: 0;
   height: 100%;
-  padding: 0.625rem 0.375rem;
+  padding: 0.625rem 0;
   border-right: 1px solid var(--color-borders);
 
-  background: var(--color-background);
+  background: var(--color-background-sidebar);
+
+  @media (max-width: 600px) {
+    width: 3.5rem;
+  }
 }
 
 .server-account-shell-rail-top,
@@ -408,6 +545,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  width: 100%;
 }
 
 .server-account-shell-rail-account {
@@ -419,11 +557,11 @@
   align-items: center;
   justify-content: center;
 
-  width: 2.25rem;
-  height: 2.25rem;
+  width: var(--folders-sidebar-width);
+  height: 3.5rem;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: 0;
 
   background: transparent;
   outline: none;
@@ -432,6 +570,10 @@
     .server-account-shell-rail-avatar {
       box-shadow: 0 0 0 2px rgba(var(--color-primary-rgb), 0.32);
     }
+  }
+
+  @media (max-width: 600px) {
+    width: 3.5rem;
   }
 }
 
@@ -480,6 +622,10 @@
   box-shadow: 0 0.25rem 1rem rgba(0, 0, 0, 0.14);
 
   transition: opacity 150ms ease, transform 150ms ease;
+
+  @media (max-width: 600px) {
+    width: min(13.5rem, calc(100vw - 7.25rem));
+  }
 }
 
 .server-account-shell-rail-title {
@@ -519,6 +665,10 @@
   border-left: 1px solid var(--color-borders);
 
   background: var(--color-background);
+
+  @media (max-width: 600px) {
+    padding-inline: 0.25rem;
+  }
 }
 
 .server-account-shell-tool-button {
@@ -544,5 +694,52 @@
   &.active {
     color: var(--color-primary);
     background: rgba(var(--color-primary-rgb), 0.08);
+  }
+
+  @media (max-width: 600px) {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1.125rem;
+  }
+}
+
+@media (max-width: 925px) {
+  #ServerAccountShell.is-sidebar-collapsed {
+    .server-account-shell-sidebar {
+      display: none;
+    }
+  }
+
+  #ServerAccountShell:not(.is-sidebar-collapsed)::before {
+    content: "";
+
+    position: absolute;
+    z-index: 19;
+    inset: 0;
+
+    background: rgba(0, 0, 0, 0.18);
+  }
+
+  #ServerAccountShell.with-tool-panel {
+    .server-tool-panel {
+      position: absolute;
+      z-index: 18;
+      top: 0;
+      right: 3.25rem;
+      bottom: 0;
+
+      width: min(var(--server-tool-panel-width, 22rem), calc(100vw - var(--folders-sidebar-width) - 3.25rem));
+
+      box-shadow: -0.25rem 0 1.25rem rgba(0, 0, 0, 0.14);
+    }
+  }
+}
+
+@media (max-width: 600px) {
+  #ServerAccountShell.with-tool-panel {
+    .server-tool-panel {
+      right: 3rem;
+      width: calc(100vw - 6.5rem);
+    }
   }
 }

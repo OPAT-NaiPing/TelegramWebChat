@@ -62,14 +62,27 @@ export function useViewTransition(): ViewTransitionController {
       transition.types?.add(type);
     });
 
-    transition.finished.then(() => {
+    let isFinished = false;
+    function finishTransition(nextState: TransitionState = 'idle') {
+      if (isFinished) return;
+      isFinished = true;
       onHeavyAnimationEnd();
-      setTransitionState('idle');
+      setTransitionState(nextState);
       requestMutation(() => {
         cleanUp(types);
       });
 
       hasActiveTransition = false;
+    }
+
+    transition.finished.then(() => {
+      finishTransition();
+    }).catch((e: unknown) => {
+      if (!isSkippedViewTransitionError(e)) {
+        // eslint-disable-next-line no-console
+        console.error('View transition error', e, types?.getTypes());
+      }
+      finishTransition('skipped');
     });
 
     let isReady = false;
@@ -78,18 +91,15 @@ export function useViewTransition(): ViewTransitionController {
       isReady = true;
       setTransitionState('animating');
     }).catch((e: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error('View transition error', e, types?.getTypes());
-      setTransitionState('skipped');
-      requestMutation(() => {
-        cleanUp(types);
-      });
-
-      hasActiveTransition = false;
+      if (!isSkippedViewTransitionError(e)) {
+        // eslint-disable-next-line no-console
+        console.error('View transition error', e, types?.getTypes());
+      }
+      finishTransition('skipped');
     });
 
     setTimeout(() => {
-      if (!isReady) { // Skip transition if it's not prepared in time
+      if (!isReady && !isFinished) { // Skip transition if it's not prepared in time
         transition.skipTransition();
       }
     }, SKIP_TIMEOUT);
@@ -141,4 +151,10 @@ function cleanUp(types?: VTTypes) {
     document.documentElement.classList.remove(`${VT_TYPE_CLASS_PREFIX}${type}`);
   });
   document.documentElement.classList.remove(VT_CLASS_NAME);
+}
+
+function isSkippedViewTransitionError(error: unknown) {
+  return error instanceof DOMException
+    && error.name === 'AbortError'
+    && error.message === 'Transition was skipped';
 }

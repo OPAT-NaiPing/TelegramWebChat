@@ -122,6 +122,12 @@ export const SERVER_TOOL_LANGUAGES = [
   { value: 'cn', label: '简体中文' },
   { value: 'tw', label: '繁体中文' },
   { value: 'en', label: 'English' },
+  { value: 'nl', label: 'Nederlands' },
+  { value: 'he', label: 'עברית' },
+  { value: 'fa', label: 'فارسی' },
+  { value: 'pl', label: 'Polski' },
+  { value: 'uz', label: 'O‘zbek' },
+  { value: 'my', label: 'မြန်မာ' },
   { value: 'ru', label: 'Русский' },
   { value: 'es', label: 'Español' },
   { value: 'fr', label: 'Français' },
@@ -134,13 +140,20 @@ export const SERVER_TOOL_LANGUAGES = [
   { value: 'ko', label: '한국어' },
   { value: 'ar', label: 'العربية' },
   { value: 'hi', label: 'हिन्दी' },
+  { value: 'uk', label: 'Українська' },
+  { value: 'kk', label: 'Қазақша' },
+  { value: 'ms', label: 'Bahasa Melayu' },
+  { value: 'km', label: 'ភាសាខ្មែរ' },
 ];
 
 export const SERVER_TOOL_TRANSLATE_CHANNELS = [
+  { value: 0, label: '自定义' },
   { value: 1, label: '免费-谷歌' },
   { value: 2, label: '免费-聚合' },
-  { value: 3, label: '自定义' },
 ];
+
+const SERVER_TOOL_LANGUAGE_VALUES = new Set(SERVER_TOOL_LANGUAGES.map(({ value }) => value));
+const SERVER_TOOL_TRANSLATE_CHANNEL_VALUES = new Set(SERVER_TOOL_TRANSLATE_CHANNELS.map(({ value }) => value));
 
 function getFileSuffix(filename: string) {
   const suffix = filename.split('.').pop();
@@ -204,19 +217,117 @@ function getTranslationCacheKey(content: string, targetLang: string, type: numbe
   return `${type}:${targetLang}:${content}`;
 }
 
-function normalizeServerTranslateLanguage(language: string) {
-  const value = language.toLowerCase();
+function normalizeServerTranslateLanguage(language: unknown, fallback = DEFAULT_SERVER_TOOL_SETTINGS.sendAutoLanguage) {
+  if (language === undefined) return fallback;
+
+  const value = typeof language === 'string' || typeof language === 'number'
+    ? String(language).trim().toLowerCase()
+    : '';
+  if (!value) return fallback;
   if (value === 'zh' || value.startsWith('zh-hans') || value === 'zh-cn') return 'cn';
   if (value.startsWith('zh-hant') || value === 'zh-tw' || value === 'zh-hk') return 'tw';
 
-  return value.split('-')[0] || language;
+  const normalized = value.split('-')[0] || fallback;
+  return SERVER_TOOL_LANGUAGE_VALUES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeServerTranslateType(type: unknown, fallback = 1) {
+  const value = Number(type);
+  if (!Number.isFinite(value)) return fallback;
+
+  // 旧项目和后端协议中自定义翻译通道是 0，这里兼容迁移早期写入的 3。
+  const normalized = value === 3 ? 0 : value;
+  if (!SERVER_TOOL_TRANSLATE_CHANNEL_VALUES.has(normalized)) return fallback;
+
+  return normalized;
+}
+
+function normalizeServerToolBoolean(value: unknown, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  }
+
+  return fallback;
+}
+
+function getServerToolValue(source: Record<string, any>, keys: string[]) {
+  for (const key of keys) {
+    if (source[key] !== undefined) return source[key];
+  }
+
+  return undefined;
+}
+
+function unwrapServerTranslateConfig(rawConfig: unknown) {
+  if (!rawConfig || typeof rawConfig !== 'object') return {};
+
+  const config = rawConfig as Record<string, any>;
+  const nestedConfig = config.data;
+  if (nestedConfig && typeof nestedConfig === 'object') {
+    return nestedConfig as Record<string, any>;
+  }
+
+  return config;
+}
+
+function normalizeServerTranslateConfig(rawConfig: unknown, cid = 0): ServerTranslateConfig {
+  const config = unwrapServerTranslateConfig(rawConfig);
+  const sendAutoLanguage = normalizeServerTranslateLanguage(
+    getServerToolValue(config, ['sendAutoLanguage', 'send_auto_language', 'sendLanguage', 'sendLang']),
+    DEFAULT_SERVER_TOOL_SETTINGS.sendAutoLanguage,
+  );
+  const receiveAutoLanguage = normalizeServerTranslateLanguage(
+    getServerToolValue(config, ['receiveAutoLanguage', 'receive_auto_language', 'receiveLanguage', 'receiveLang']),
+    DEFAULT_SERVER_TOOL_SETTINGS.receiveAutoLanguage,
+  );
+
+  // 后端历史版本可能返回字符串、数字或嵌套 data，这里统一成控件 option 能匹配的值。
+  return {
+    cid: Number(getServerToolValue(config, ['cid', 'CID']) ?? cid) || cid,
+    isolate: normalizeServerToolBoolean(getServerToolValue(config, ['isolate']), false),
+    sendAuto: normalizeServerToolBoolean(getServerToolValue(config, ['sendAuto', 'send_auto']), false),
+    sendAutoType: normalizeServerTranslateType(
+      getServerToolValue(config, ['sendAutoType', 'send_auto_type', 'sendType']),
+      DEFAULT_SERVER_TOOL_SETTINGS.sendAutoType,
+    ),
+    sendAutoLanguage,
+    receiveAuto: normalizeServerToolBoolean(getServerToolValue(config, ['receiveAuto', 'receive_auto']), false),
+    receiveAutoType: normalizeServerTranslateType(
+      getServerToolValue(config, ['receiveAutoType', 'receive_auto_type', 'receiveType']),
+      DEFAULT_SERVER_TOOL_SETTINGS.receiveAutoType,
+    ),
+    receiveAutoLanguage,
+    imgAuto: normalizeServerToolBoolean(getServerToolValue(config, ['imgAuto', 'img_auto']), false),
+    voiceAuto: normalizeServerToolBoolean(getServerToolValue(config, ['voiceAuto', 'voice_auto']), false),
+  };
 }
 
 export function loadServerToolSettings(): ServerToolSettings {
   try {
-    return {
+    const settings = {
       ...DEFAULT_SERVER_TOOL_SETTINGS,
       ...JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}'),
+    };
+
+    return {
+      ...settings,
+      sendAutoLanguage: normalizeServerTranslateLanguage(
+        settings.sendAutoLanguage,
+        DEFAULT_SERVER_TOOL_SETTINGS.sendAutoLanguage,
+      ),
+      sendAutoType: normalizeServerTranslateType(settings.sendAutoType, DEFAULT_SERVER_TOOL_SETTINGS.sendAutoType),
+      receiveAutoLanguage: normalizeServerTranslateLanguage(
+        settings.receiveAutoLanguage,
+        DEFAULT_SERVER_TOOL_SETTINGS.receiveAutoLanguage,
+      ),
+      receiveAutoType: normalizeServerTranslateType(
+        settings.receiveAutoType,
+        DEFAULT_SERVER_TOOL_SETTINGS.receiveAutoType,
+      ),
     };
   } catch (err) {
     localStorage.removeItem(SETTINGS_STORAGE_KEY);
@@ -225,8 +336,42 @@ export function loadServerToolSettings(): ServerToolSettings {
 }
 
 export function saveServerToolSettings(settings: ServerToolSettings) {
-  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-  window.dispatchEvent(new CustomEvent('server-tool-settings-updated', { detail: settings }));
+  const normalizedSettings = {
+    ...settings,
+    sendAutoLanguage: normalizeServerTranslateLanguage(
+      settings.sendAutoLanguage,
+      DEFAULT_SERVER_TOOL_SETTINGS.sendAutoLanguage,
+    ),
+    sendAutoType: normalizeServerTranslateType(settings.sendAutoType, DEFAULT_SERVER_TOOL_SETTINGS.sendAutoType),
+    receiveAutoLanguage: normalizeServerTranslateLanguage(
+      settings.receiveAutoLanguage,
+      DEFAULT_SERVER_TOOL_SETTINGS.receiveAutoLanguage,
+    ),
+    receiveAutoType: normalizeServerTranslateType(
+      settings.receiveAutoType,
+      DEFAULT_SERVER_TOOL_SETTINGS.receiveAutoType,
+    ),
+  };
+
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(normalizedSettings));
+  window.dispatchEvent(new CustomEvent('server-tool-settings-updated', { detail: normalizedSettings }));
+}
+
+export function mergeServerTranslateConfigToSettings(
+  config: ServerTranslateConfig,
+  savedSettings = loadServerToolSettings(),
+): ServerToolSettings {
+  const normalizedConfig = normalizeServerTranslateConfig(config, config.cid || 0);
+
+  return {
+    ...savedSettings,
+    sendAuto: Boolean(normalizedConfig.sendAuto),
+    sendAutoLanguage: normalizedConfig.sendAutoLanguage || savedSettings.sendAutoLanguage,
+    sendAutoType: normalizedConfig.sendAutoType ?? savedSettings.sendAutoType,
+    receiveAuto: Boolean(normalizedConfig.receiveAuto),
+    receiveAutoLanguage: normalizedConfig.receiveAutoLanguage || savedSettings.receiveAutoLanguage,
+    receiveAutoType: normalizedConfig.receiveAutoType ?? savedSettings.receiveAutoType,
+  };
 }
 
 export function clearServerMaterialCache() {
@@ -263,7 +408,7 @@ export function getServerReceiveTranslationOptions() {
 
   return {
     targetLang: settings.receiveAutoLanguage,
-    type: settings.receiveAutoType,
+    type: normalizeServerTranslateType(settings.receiveAutoType),
   };
 }
 
@@ -531,11 +676,7 @@ export async function fetchServerTranslateConfig(cid = 0) {
     data: JSON.stringify({ cid }),
   });
 
-  return {
-    ...DEFAULT_SERVER_TOOL_SETTINGS,
-    ...response.data,
-    cid,
-  } as ServerTranslateConfig;
+  return normalizeServerTranslateConfig(response.data, cid);
 }
 
 export async function saveServerTranslateConfig(config: ServerTranslateConfig) {
@@ -553,7 +694,7 @@ export async function translateServerText(content: string, options?: {
 }) {
   const settings = loadServerToolSettings();
   const targetLang = normalizeServerTranslateLanguage(options?.targetLang || settings.sendAutoLanguage);
-  const type = options?.type || settings.sendAutoType || 1;
+  const type = normalizeServerTranslateType(options?.type ?? settings.sendAutoType, 1);
   const cached = getCachedServerTranslation(content, targetLang, type);
   if (cached) return cached;
 

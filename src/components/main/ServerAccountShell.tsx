@@ -10,20 +10,29 @@ import type { ServerToolPage } from '../../util/serverTools';
 import buildClassName from '../../util/buildClassName';
 import {
   addServerSystemMessageListener,
-  cleanServerSelectedState,
+  addServerWsConnectedListener,
+  addServerWsDisconnectedListener,
+  checkServerAccountOnline,
   fetchAllServerAccounts,
   fetchServerAccounts,
   getAccountTitle,
+  getServerAccountBackendId,
   getServerAccountFrameUrl,
   getServerAccountId,
-  getServerAccountSlot,
   handleServerAccountWsRequestMessage,
-  importServerAccountsIntoNativeSlots,
+  importServerAccountIntoNativeSlot,
+  reconnectServerWs,
   SERVER_SYSTEM_CODES,
   setupServerBrowserLogReporter,
   signOutServerAccount,
 } from '../../util/serverAccounts';
 import { serverToolT } from '../../util/serverToolLocale';
+import {
+  fetchServerTranslateConfig,
+  mergeServerTranslateConfigToSettings,
+  postServerToolMessageToFrame,
+  saveServerToolSettings,
+} from '../../util/serverTools';
 
 import useFlag from '../../hooks/useFlag';
 import useLastCallback from '../../hooks/useLastCallback';
@@ -35,6 +44,8 @@ import MenuItem from '../ui/MenuItem';
 import ServerToolPanel from './ServerToolPanel';
 
 import './ServerAccountShell.scss';
+
+import telegramLogoPath from '../../assets/telegram-logo.svg';
 
 const SEARCH_TYPES = [
   { label: '手机号', value: 1 },
@@ -48,6 +59,7 @@ const DEFAULT_SIDEBAR_WIDTH = 320;
 const MIN_SIDEBAR_WIDTH = 240;
 const MAX_SIDEBAR_WIDTH = 560;
 const TOOL_PANEL_WIDTH = 22;
+const WS_RECONNECT_SECONDS = 5;
 
 function getServerSystemText(data: any, fallback: string) {
   if (!data) return fallback;
@@ -73,6 +85,10 @@ function getAccountPhone(account: ServerAccount) {
   return account.phone || account.account || account.username || '';
 }
 
+function getAccountDescription(account: ServerAccount) {
+  return account.remark || '';
+}
+
 function getAccountDcId(account: ServerAccount) {
   return account.dcid ?? account.dcId ?? account.dcID ?? account.DCID;
 }
@@ -83,16 +99,17 @@ function getOnlineText(online?: number) {
   return '离线';
 }
 
-function getStatusText(status?: number) {
-  const texts: Record<number, string> = {
-    1: '登录成功',
-    2: '登录超时',
-    3: '登录失败',
-    4: '已禁用',
-    6: '异常',
+function getAccountStatusConfig(status?: number) {
+  const configs: Record<number, { text: string; color: string }> = {
+    1: { text: '正常', color: 'success' },
+    2: { text: '异常', color: 'warning' },
+    3: { text: '被封', color: 'danger' },
+    4: { text: '频繁', color: 'info' },
+    6: { text: '冻结', color: 'warning' },
+    7: { text: '直连', color: 'success' },
   };
 
-  return status ? texts[status] || `状态 ${status}` : '未知状态';
+  return status ? configs[status] || { text: `状态 ${status}`, color: 'default' } : { text: '未知状态', color: 'default' };
 }
 
 const ServerAccountShell = () => {
@@ -108,6 +125,10 @@ const ServerAccountShell = () => {
   const [activeToolPage, setActiveToolPage] = useState<ServerToolPage | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [wsDisconnected, setWsDisconnected] = useState<{
+    message: string;
+    countdown: number;
+  } | undefined>();
   const [systemDialog, setSystemDialog] = useState<{
     title: string;
     text: string;
@@ -155,6 +176,78 @@ const ServerAccountShell = () => {
   useEffect(() => {
     return setupServerBrowserLogReporter();
   }, []);
+
+  const syncTranslateConfig = useLastCallback(async () => {
+    try {
+      const config = await fetchServerTranslateConfig(0);
+      const nextSettings = mergeServerTranslateConfigToSettings(config);
+
+      saveServerToolSettings(nextSettings);
+      postServerToolMessageToFrame(frameRef.current, { type: 'server-tool-settings-updated', settings: nextSettings });
+    } catch (err: any) {
+      showNotification({
+        message: err?.message || '获取远端翻译配置失败',
+        icon: 'warning',
+      });
+    }
+  });
+
+  useEffect(() => {
+    return addServerWsConnectedListener(() => {
+      setWsDisconnected(undefined);
+      void syncTranslateConfig();
+    });
+  }, [syncTranslateConfig]);
+
+  const reconnectServerAccountWs = useLastCallback(async () => {
+    setIsLoading(true);
+    try {
+      await reconnectServerWs();
+      setWsDisconnected(undefined);
+      await syncAccounts();
+    } catch (err: any) {
+      setWsDisconnected({
+        message: err?.message || '业务 WebSocket 重连失败',
+        countdown: WS_RECONNECT_SECONDS,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  });
+
+  useEffect(() => {
+    return addServerWsDisconnectedListener((detail) => {
+      setFrameUrl(undefined);
+      setSelectedAccountId(undefined);
+      setWsDisconnected({
+        message: detail.message || '业务 WebSocket 已断开',
+        countdown: WS_RECONNECT_SECONDS,
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!wsDisconnected) return undefined;
+    if (wsDisconnected.countdown <= 0) {
+      void reconnectServerAccountWs();
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setWsDisconnected((current) => {
+        if (!current) return current;
+
+        return {
+          ...current,
+          countdown: current.countdown - 1,
+        };
+      });
+    }, 1000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [reconnectServerAccountWs, wsDisconnected]);
 
   useEffect(() => {
     return addServerSystemMessageListener((message) => {
@@ -208,7 +301,6 @@ const ServerAccountShell = () => {
         throw new Error('没有可用账号');
       }
 
-      importServerAccountsIntoNativeSlots(result.accounts);
       setAccounts(result.accounts);
       const selectedAccountAfterSync = result.accounts.find((account) => {
         return getServerAccountId(account) === selectedAccountId;
@@ -267,13 +359,45 @@ const ServerAccountShell = () => {
     void syncAccounts();
   }
 
-  function handleAccountClick(account: ServerAccount) {
-    const slot = getServerAccountSlot(account);
-    if (!slot) return;
+  function collapseSidebarOnSmallScreen() {
+    if (window.matchMedia('(max-width: 925px)').matches) {
+      setIsSidebarCollapsed(true);
+    }
+  }
 
-    void cleanServerSelectedState().catch(() => undefined);
-    setSelectedAccountId(getServerAccountId(account));
+  async function handleAccountClick(account: ServerAccount) {
+    const accountId = getServerAccountId(account);
+    const backendAccountId = getServerAccountBackendId(account);
+    if (!accountId) {
+      showNotification({ message: '账号信息缺少 ID，无法载入', icon: 'warning' });
+      return;
+    }
+    if (!backendAccountId) {
+      showNotification({ message: '账号信息缺少服务端 ID，无法检测在线状态', icon: 'warning' });
+      return;
+    }
+
+    setIsLoading(true);
+    let slot: number;
+    try {
+      await checkServerAccountOnline(backendAccountId);
+      slot = importServerAccountIntoNativeSlot(account);
+    } catch (err: any) {
+      showNotification({ message: err?.message || '账号不在线，无法载入', icon: 'warning' });
+      setIsLoading(false);
+      return;
+    }
+
+    if (!slot) {
+      showNotification({ message: '账号置入失败，无法载入', icon: 'warning' });
+      setIsLoading(false);
+      return;
+    }
+
+    setSelectedAccountId(accountId);
     setFrameUrl(getServerAccountFrameUrl(slot));
+    collapseSidebarOnSmallScreen();
+    setIsLoading(false);
   }
 
   function handleSignOut() {
@@ -311,8 +435,11 @@ const ServerAccountShell = () => {
     const phone = selectedAccount ? getAccountPhone(selectedAccount) : '暂无账号';
     const dcId = selectedAccount ? getAccountDcId(selectedAccount) : '-';
     const onlineText = selectedAccount ? getOnlineText(Number(selectedAccount.online)) : '未知状态';
-    const statusText = selectedAccount ? getStatusText(Number(selectedAccount.accountStatus)) : '未知状态';
-    const image = selectedAccount?.avatarUri || selectedAccount?.headimg;
+    const accountStatus = selectedAccount ? Number(selectedAccount.accountStatus) : undefined;
+    const isDirectAccount = accountStatus === 7;
+    const statusConfig = getAccountStatusConfig(accountStatus);
+    const description = selectedAccount ? getAccountDescription(selectedAccount) : '';
+    const image = selectedAccount ? selectedAccount.avatarUri || selectedAccount.headimg : telegramLogoPath;
 
     return (
       <button
@@ -337,7 +464,16 @@ const ServerAccountShell = () => {
             {' · '}
             {onlineText}
           </span>
-          <span className="server-account-shell-rail-text">{statusText}</span>
+          {!isDirectAccount && description && (
+            <span className="server-account-shell-rail-text">{description}</span>
+          )}
+          <span className={buildClassName(
+            'server-account-shell-tag',
+            `color-${statusConfig.color}`,
+          )}
+          >
+            {statusConfig.text}
+          </span>
         </span>
       </button>
     );
@@ -362,6 +498,10 @@ const ServerAccountShell = () => {
     const title = getAccountTitle(account);
     const phone = getAccountPhone(account);
     const dcId = getAccountDcId(account);
+    const accountStatus = Number(account.accountStatus);
+    const isDirectAccount = accountStatus === 7;
+    const statusConfig = getAccountStatusConfig(accountStatus);
+    const description = getAccountDescription(account);
     const isSelected = Boolean(accountId && accountId === selectedAccountId);
 
     return (
@@ -385,11 +525,25 @@ const ServerAccountShell = () => {
             {' · DC '}
             {dcId || '-'}
           </span>
-          <span className="server-account-shell-status">
-            <span className={buildClassName('server-account-shell-dot', Number(account.online) === 2 && 'online')} />
-            {getOnlineText(Number(account.online))}
-            {' · '}
-            {getStatusText(Number(account.accountStatus))}
+          <span className={buildClassName('server-account-shell-status', isDirectAccount && 'direct')}>
+            <span className={buildClassName(
+              'server-account-shell-dot',
+              isDirectAccount ? 'direct' : 'attention',
+            )}
+            />
+            {description && !isDirectAccount && (
+              <>
+                {description}
+                {' · '}
+              </>
+            )}
+            <span className={buildClassName(
+              'server-account-shell-tag',
+              `color-${statusConfig.color}`,
+            )}
+            >
+              {statusConfig.text}
+            </span>
           </span>
         </span>
       </button>
@@ -463,11 +617,6 @@ const ServerAccountShell = () => {
             )}
           </div>
         </form>
-
-        <div className="server-account-shell-summary">
-          {accounts.length ? `共 ${accounts.length} 个账号` : '暂无账号'}
-        </div>
-
         {error && <div className="server-account-shell-error">{error}</div>}
 
         <div className="server-account-shell-list custom-scroll">
@@ -504,7 +653,30 @@ const ServerAccountShell = () => {
       </nav>
 
       <main className="server-account-shell-frame-wrap">
-        {frameUrl ? (
+        {wsDisconnected ? (
+          <div className="server-account-shell-placeholder server-account-shell-disconnected">
+            <i className="icon icon-warning" />
+            <strong className="server-account-shell-placeholder-title">业务连接已断开</strong>
+            <span className="server-account-shell-placeholder-text">
+              {wsDisconnected.message}
+            </span>
+            <span className="server-account-shell-placeholder-text">
+              {wsDisconnected.countdown > 0
+                ? `${wsDisconnected.countdown} 秒后自动重连`
+                : '正在自动重连...'}
+            </span>
+            <Button
+              type="button"
+              size="tiny"
+              color="primary"
+              className="server-account-shell-reconnect-button"
+              disabled={isLoading}
+              onClick={reconnectServerAccountWs}
+            >
+              立即重连
+            </Button>
+          </div>
+        ) : frameUrl ? (
           <iframe
             ref={frameRef}
             className="server-account-shell-frame"

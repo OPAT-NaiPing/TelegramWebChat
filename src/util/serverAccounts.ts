@@ -29,6 +29,7 @@ export const SERVER_SYSTEM_CODES = {
 } as const;
 
 const ACCOUNT_LIST_CODE = 0x1001;
+const ACCOUNT_GET_ONLINE_CODE = 0x1005;
 const DEFAULT_PAGE_SIZE = 50;
 const REQUEST_TIMEOUT = 30000;
 const WS_CONNECT_TIMEOUT = 15000;
@@ -39,6 +40,8 @@ const SERVER_ACCOUNT_FRAME_QUERY = 'serverAccountFrame';
 const SERVER_ACCOUNT_WS_REQUEST_TYPE = 'server-account-ws-request';
 const SERVER_ACCOUNT_WS_RESPONSE_TYPE = 'server-account-ws-response';
 const SERVER_ACCOUNT_SYSTEM_EVENT = 'server-account-system-message';
+const SERVER_ACCOUNT_WS_CONNECTED_EVENT = 'server-account-ws-connected';
+const SERVER_ACCOUNT_WS_DISCONNECTED_EVENT = 'server-account-ws-disconnected';
 
 type LoginResponse = {
   code?: number;
@@ -112,6 +115,12 @@ type ServerAccountWsResponseMessage = {
   error?: string;
 };
 
+export type ServerAccountWsDisconnectedDetail = {
+  code?: number;
+  reason?: string;
+  message: string;
+};
+
 export const SERVER_TOOL_CODES = {
   MATERIAL_GROUP_LIST: 0x5001,
   MATERIAL_GROUP_CREATE: 0x5002,
@@ -137,7 +146,9 @@ type ServerAccountState = {
 
 let state: ServerAccountState | undefined;
 let socket: WebSocket | undefined;
+let connectingPromise: Promise<WebSocket> | undefined;
 const pendingRequests = new Map<string, (value: AccountListResponse) => void>();
+const silentClosingSockets = new WeakSet<WebSocket>();
 
 function dispatchServerSystemMessage(message: ServerSystemMessage) {
   window.dispatchEvent(new CustomEvent<ServerSystemMessage>(SERVER_ACCOUNT_SYSTEM_EVENT, { detail: message }));
@@ -153,6 +164,44 @@ export function addServerSystemMessageListener(listener: (message: ServerSystemM
   return () => {
     window.removeEventListener(SERVER_ACCOUNT_SYSTEM_EVENT, eventListener);
   };
+}
+
+function dispatchServerWsConnected() {
+  window.dispatchEvent(new CustomEvent(SERVER_ACCOUNT_WS_CONNECTED_EVENT));
+}
+
+export function addServerWsConnectedListener(listener: () => void) {
+  window.addEventListener(SERVER_ACCOUNT_WS_CONNECTED_EVENT, listener);
+
+  return () => {
+    window.removeEventListener(SERVER_ACCOUNT_WS_CONNECTED_EVENT, listener);
+  };
+}
+
+function dispatchServerWsDisconnected(detail: ServerAccountWsDisconnectedDetail) {
+  window.dispatchEvent(new CustomEvent<ServerAccountWsDisconnectedDetail>(
+    SERVER_ACCOUNT_WS_DISCONNECTED_EVENT,
+    { detail },
+  ));
+}
+
+export function addServerWsDisconnectedListener(listener: (detail: ServerAccountWsDisconnectedDetail) => void) {
+  const eventListener = (event: Event) => {
+    listener((event as CustomEvent<ServerAccountWsDisconnectedDetail>).detail);
+  };
+
+  window.addEventListener(SERVER_ACCOUNT_WS_DISCONNECTED_EVENT, eventListener);
+
+  return () => {
+    window.removeEventListener(SERVER_ACCOUNT_WS_DISCONNECTED_EVENT, eventListener);
+  };
+}
+
+function rejectPendingServerWsRequests(error: Error) {
+  pendingRequests.forEach((resolve) => {
+    resolve({ code: -1, msg: error.message });
+  });
+  pendingRequests.clear();
 }
 
 function formatBrowserLogReason(reason: any) {
@@ -539,37 +588,54 @@ function parseMessage(data: string): AccountListResponse | undefined {
 
 function connectServerWs() {
   if (isServerAccountFrame()) {
-    return Promise.reject(new Error('原生页面不直接创建业务 WebSocket，请通过外层页面转发请求'));
+    return Promise.reject(new Error('原生页面不直接连接业务 WebSocket，请通过外层页面转发请求'));
   }
 
   if (socket?.readyState === WebSocket.OPEN) {
     return Promise.resolve(socket);
   }
+  if (connectingPromise) {
+    return connectingPromise;
+  }
 
-  socket?.close();
   const wsUrl = buildWsUrl();
-  socket = new WebSocket(wsUrl);
+  const oldSocket = socket;
+  if (oldSocket && oldSocket.readyState !== WebSocket.CLOSED) {
+    silentClosingSockets.add(oldSocket);
+    oldSocket.close();
+  }
 
-  return new Promise<WebSocket>((resolve, reject) => {
+  const nextSocket = new WebSocket(wsUrl);
+  socket = nextSocket;
+
+  connectingPromise = new Promise<WebSocket>((resolve, reject) => {
     let isSettled = false;
     const timer = window.setTimeout(() => {
       if (isSettled) return;
       isSettled = true;
+      connectingPromise = undefined;
+      if (socket === nextSocket) {
+        socket = undefined;
+      }
+      silentClosingSockets.add(nextSocket);
+      nextSocket.close();
       reject(new Error(`业务 WebSocket 连接超时：${wsUrl}`));
     }, WS_CONNECT_TIMEOUT);
 
-    socket!.onopen = () => {
+    nextSocket.onopen = () => {
       isSettled = true;
+      connectingPromise = undefined;
       window.clearTimeout(timer);
-      // 旧项目连接成功后会上报版本初始化包，保持服务端原有握手语义。
-      socket!.send(JSON.stringify({
+      // 连接成功后立即提交前端版本信息，旧服务会按这个初始化业务状态。
+      nextSocket.send(JSON.stringify({
         code: SERVER_SYSTEM_CODES.InitSystem,
         data: JSON.stringify({ info: { version: APP_VERSION } }),
       }));
-      resolve(socket!);
+      dispatchServerWsConnected();
+      resolve(nextSocket);
     };
 
-    socket!.onmessage = async (event) => {
+    nextSocket.onmessage = async (event) => {
       const data = await normalizeWsData(event.data);
       if (!data) return;
       const message = parseMessage(data);
@@ -580,24 +646,51 @@ function connectServerWs() {
         return;
       }
 
-      // 没有匹配 uuid 的消息属于旧服务主动推送，系统指令需要交给外层 Shell 处理。
+      // 没有 uuid 的消息属于服务端主动推送，交给外层 Shell 统一处理。
       dispatchServerSystemMessage(message);
     };
 
-    socket!.onerror = () => {
+    nextSocket.onerror = () => {
       if (isSettled) return;
       isSettled = true;
+      connectingPromise = undefined;
       window.clearTimeout(timer);
       reject(new Error(`业务 WebSocket 连接失败：${wsUrl}`));
     };
 
-    socket!.onclose = (event) => {
-      if (isSettled) return;
-      isSettled = true;
+    nextSocket.onclose = (event) => {
+      const isSilentClose = silentClosingSockets.has(nextSocket);
+      const isCurrentSocket = socket === nextSocket;
+      const message = `业务 WebSocket 已断开：${event.code || '未知'} ${event.reason || ''}`.trim();
       window.clearTimeout(timer);
-      reject(new Error(`业务 WebSocket 已关闭：${event.code || '无状态码'} ${event.reason || ''}`.trim()));
+
+      if (!isCurrentSocket) {
+        return;
+      }
+
+      if (isCurrentSocket) {
+        socket = undefined;
+        connectingPromise = undefined;
+      }
+      rejectPendingServerWsRequests(new Error(message));
+
+      if (!isSettled) {
+        isSettled = true;
+        reject(new Error(message));
+        return;
+      }
+
+      if (isSilentClose) return;
+
+      dispatchServerWsDisconnected({
+        code: event.code || undefined,
+        reason: event.reason || undefined,
+        message,
+      });
     };
   });
+
+  return connectingPromise;
 }
 
 export function sendServerWsMessage<T = AccountListResponse>(message: Record<string, any>): Promise<T> {
@@ -734,6 +827,20 @@ export async function requestServerWs<T = AccountListResponse>(message: Record<s
   return sendServerWsMessage<T>(message);
 }
 
+export async function reconnectServerWs() {
+  if (isServerAccountFrame()) {
+    throw new Error('原生页面不直接重连业务 WebSocket');
+  }
+
+  if (socket && socket.readyState !== WebSocket.CLOSED) {
+    silentClosingSockets.add(socket);
+    socket.close();
+  }
+  socket = undefined;
+  connectingPromise = undefined;
+  await connectServerWs();
+}
+
 export function getServerUserInfo() {
   return restoreState()?.user;
 }
@@ -773,6 +880,7 @@ export async function fetchServerAccounts(content = '', offset?: unknown, search
       type: searchType,
       content,
       offset,
+      offline: true,
       pageSize: DEFAULT_PAGE_SIZE,
     }),
   });
@@ -807,6 +915,26 @@ export async function fetchServerAccounts(content = '', offset?: unknown, search
     offset: state.offset,
     hasMore: state.hasMore,
   };
+}
+
+export async function checkServerAccountOnline(accountId: string | number) {
+  const aid = Number(accountId);
+  if (!Number.isInteger(aid) || aid <= 0) {
+    throw new Error('账号服务端 ID 无效，无法检测在线状态');
+  }
+
+  const response = await requestServerWs<AccountListResponse>({
+    aid,
+    code: ACCOUNT_GET_ONLINE_CODE,
+  });
+
+  const data = response.data as { code?: number; msg?: string } | undefined;
+  const businessCode = typeof data?.code === 'number' ? data.code : 0;
+  if (businessCode !== 0) {
+    throw new Error(data?.msg || response.msg || '账号不在线，无法载入');
+  }
+
+  return response;
 }
 
 export async function fetchAllServerAccounts(content = '', searchType: number | string = 3) {
@@ -934,6 +1062,11 @@ export function getAccountTitle(account: ServerAccount) {
 
 export function getServerAccountId(account: ServerAccount) {
   const id = account.ID ?? account.id ?? account.account ?? account.phone;
+  return id === undefined ? undefined : String(id);
+}
+
+export function getServerAccountBackendId(account: ServerAccount) {
+  const id = account.ID ?? account.id;
   return id === undefined ? undefined : String(id);
 }
 
@@ -1122,6 +1255,43 @@ export function importServerAccountsIntoNativeSlots(accounts: ServerAccount[]) {
   }
 
   return getAccountSlotUrl(1);
+}
+
+export function importServerAccountIntoNativeSlot(account: ServerAccount) {
+  const sharedSessionData = buildSharedSessionFromServerAccount(account);
+  const serverAccountId = sharedSessionData.serverAccountId;
+  if (!serverAccountId) {
+    throw new Error('账号信息缺少服务端 ID，无法置入');
+  }
+
+  const storedSlots = getStoredServerAccountSlots();
+  const storedSlot = storedSlots[serverAccountId];
+  let slot = storedSlot?.slot;
+
+  if (!slot) {
+    const storedServerSlotNumbers = new Set(Object.values(storedSlots).map(({ slot: currentSlot }) => currentSlot));
+    const occupiedNativeSlots = new Set(getStoredSlotNumbers().filter((slotNumber) => {
+      return !storedServerSlotNumbers.has(slotNumber);
+    }));
+
+    slot = 1;
+    while (occupiedNativeSlots.has(slot)) {
+      slot += 1;
+    }
+  }
+
+  const slotValue = getSlotValue(slot);
+  if (!isSameServerSharedSession(storedSlot?.data, sharedSessionData)) {
+    writeSlotSession(slotValue, sharedSessionData);
+  }
+
+  localStorage.setItem(getSelectedAccountStorageKeyBySlot(slotValue), serverAccountId);
+  saveServerAccountSlotMap({
+    ...loadServerAccountSlotMap(),
+    [serverAccountId]: slot,
+  });
+
+  return slot;
 }
 
 export function getServerAccountSlot(account: ServerAccount) {
