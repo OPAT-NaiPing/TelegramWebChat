@@ -254,6 +254,10 @@ function normalizeServerToolBoolean(value: unknown, fallback = false) {
   return fallback;
 }
 
+function hasServerToolValue(source: Record<string, any>, keys: string[]) {
+  return keys.some((key) => source[key] !== undefined);
+}
+
 function getServerToolValue(source: Record<string, any>, keys: string[]) {
   for (const key of keys) {
     if (source[key] !== undefined) return source[key];
@@ -276,6 +280,16 @@ function unwrapServerTranslateConfig(rawConfig: unknown) {
 
 function normalizeServerTranslateConfig(rawConfig: unknown, cid = 0): ServerTranslateConfig {
   const config = unwrapServerTranslateConfig(rawConfig);
+  const hasSendAutoType = hasServerToolValue(config, ['sendAutoType', 'send_auto_type', 'sendType']);
+  const hasSendAutoLanguage = hasServerToolValue(
+    config,
+    ['sendAutoLanguage', 'send_auto_language', 'sendLanguage', 'sendLang'],
+  );
+  const hasReceiveAutoType = hasServerToolValue(config, ['receiveAutoType', 'receive_auto_type', 'receiveType']);
+  const hasReceiveAutoLanguage = hasServerToolValue(
+    config,
+    ['receiveAutoLanguage', 'receive_auto_language', 'receiveLanguage', 'receiveLang'],
+  );
   const sendAutoLanguage = normalizeServerTranslateLanguage(
     getServerToolValue(config, ['sendAutoLanguage', 'send_auto_language', 'sendLanguage', 'sendLang']),
     DEFAULT_SERVER_TOOL_SETTINGS.sendAutoLanguage,
@@ -290,17 +304,17 @@ function normalizeServerTranslateConfig(rawConfig: unknown, cid = 0): ServerTran
     cid: Number(getServerToolValue(config, ['cid', 'CID']) ?? cid) || cid,
     isolate: normalizeServerToolBoolean(getServerToolValue(config, ['isolate']), false),
     sendAuto: normalizeServerToolBoolean(getServerToolValue(config, ['sendAuto', 'send_auto']), false),
-    sendAutoType: normalizeServerTranslateType(
+    sendAutoType: hasSendAutoType ? normalizeServerTranslateType(
       getServerToolValue(config, ['sendAutoType', 'send_auto_type', 'sendType']),
       DEFAULT_SERVER_TOOL_SETTINGS.sendAutoType,
-    ),
-    sendAutoLanguage,
+    ) : undefined,
+    sendAutoLanguage: hasSendAutoLanguage ? sendAutoLanguage : undefined,
     receiveAuto: normalizeServerToolBoolean(getServerToolValue(config, ['receiveAuto', 'receive_auto']), false),
-    receiveAutoType: normalizeServerTranslateType(
+    receiveAutoType: hasReceiveAutoType ? normalizeServerTranslateType(
       getServerToolValue(config, ['receiveAutoType', 'receive_auto_type', 'receiveType']),
       DEFAULT_SERVER_TOOL_SETTINGS.receiveAutoType,
-    ),
-    receiveAutoLanguage,
+    ) : undefined,
+    receiveAutoLanguage: hasReceiveAutoLanguage ? receiveAutoLanguage : undefined,
     imgAuto: normalizeServerToolBoolean(getServerToolValue(config, ['imgAuto', 'img_auto']), false),
     voiceAuto: normalizeServerToolBoolean(getServerToolValue(config, ['voiceAuto', 'voice_auto']), false),
   };
@@ -371,6 +385,24 @@ export function mergeServerTranslateConfigToSettings(
     receiveAuto: Boolean(normalizedConfig.receiveAuto),
     receiveAutoLanguage: normalizedConfig.receiveAutoLanguage || savedSettings.receiveAutoLanguage,
     receiveAutoType: normalizedConfig.receiveAutoType ?? savedSettings.receiveAutoType,
+  };
+}
+
+export function normalizeServerTranslateConfigForSave(config: ServerTranslateConfig): ServerTranslateConfig {
+  const normalizedConfig = normalizeServerTranslateConfig(config, config.cid || 0);
+
+  return {
+    ...config,
+    cid: normalizedConfig.cid,
+    isolate: Boolean(normalizedConfig.isolate),
+    sendAuto: Boolean(normalizedConfig.sendAuto),
+    sendAutoType: normalizedConfig.sendAutoType ?? DEFAULT_SERVER_TOOL_SETTINGS.sendAutoType,
+    sendAutoLanguage: normalizedConfig.sendAutoLanguage || DEFAULT_SERVER_TOOL_SETTINGS.sendAutoLanguage,
+    receiveAuto: Boolean(normalizedConfig.receiveAuto),
+    receiveAutoType: normalizedConfig.receiveAutoType ?? DEFAULT_SERVER_TOOL_SETTINGS.receiveAutoType,
+    receiveAutoLanguage: normalizedConfig.receiveAutoLanguage || DEFAULT_SERVER_TOOL_SETTINGS.receiveAutoLanguage,
+    imgAuto: Boolean(normalizedConfig.imgAuto),
+    voiceAuto: Boolean(normalizedConfig.voiceAuto),
   };
 }
 
@@ -680,11 +712,19 @@ export async function fetchServerTranslateConfig(cid = 0) {
 }
 
 export async function saveServerTranslateConfig(config: ServerTranslateConfig) {
-  await requestServerWs({
+  const normalizedConfig = normalizeServerTranslateConfigForSave(config);
+  const response = await requestServerWs<{ data?: { code?: number; msg?: string }; msg?: string }>({
     aid: 0,
     code: SERVER_TOOL_CODES.TRANSLATE_CONFIG_SET,
-    data: JSON.stringify(config),
+    data: JSON.stringify(normalizedConfig),
   });
+
+  const businessCode = response.data?.code ?? 0;
+  if (businessCode !== 0) {
+    throw new Error(response.data?.msg || response.msg || '保存翻译设置失败');
+  }
+
+  return normalizedConfig;
 }
 
 export async function translateServerText(content: string, options?: {

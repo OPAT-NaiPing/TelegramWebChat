@@ -354,6 +354,42 @@
   }
 }
 
+.server-send-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.server-send-preview-block {
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-background-secondary);
+
+  &.translated {
+    background: rgba(var(--color-primary-rgb), 0.08);
+  }
+}
+
+.server-send-preview-label {
+  display: block;
+
+  margin-bottom: 0.25rem;
+
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.server-send-preview-text {
+  margin: 0;
+
+  font-size: 0.9375rem;
+  line-height: 1.35;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .mobile-symbol-menu-button {
   position: relative;
   width: 2.875rem;

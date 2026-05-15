@@ -31,7 +31,7 @@
   <meta property="og:title" content="<%= htmlWebpackPlugin.options.appTitle %>">
   <meta property="og:description"
         content="Telegram is a cloud-based mobile and desktop messaging app with a focus on security and speed.">
-  <meta property="og:image" content="./<%= htmlWebpackPlugin.options.mainIcon %>.png">
+  <meta property="og:image" content="./assets/<%= htmlWebpackPlugin.options.mainIcon %>.png">
 
   <!-- Twitter -->
   <meta property="twitter:card" content="summary_large_image">
@@ -39,15 +39,15 @@
   <meta property="twitter:title" content="<%= htmlWebpackPlugin.options.appTitle %>">
   <meta property="twitter:description"
     content="Telegram is a cloud-based mobile and desktop messaging app with a focus on security and speed.">
-  <meta property="twitter:image" content="./<%= htmlWebpackPlugin.options.mainIcon %>.png">
+  <meta property="twitter:image" content="./assets/<%= htmlWebpackPlugin.options.mainIcon %>.png">
 
   <link rel="canonical" href="https://web.telegram.org/">
-  <link rel="apple-touch-icon" sizes="180x180" href="./<%= htmlWebpackPlugin.options.appleIcon %>.png">
-  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="192x192" href="./<%= htmlWebpackPlugin.options.mainIcon %>.png">
-  <link rel="alternate icon" href="./favicon.ico" type="image/x-icon">
+  <link rel="apple-touch-icon" sizes="180x180" href="./assets/<%= htmlWebpackPlugin.options.appleIcon %>.png">
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./assets/<%= htmlWebpackPlugin.options.mainIcon %>.png">
+  <link rel="alternate icon" href="./assets/favicon.ico" type="image/x-icon">
   <link rel="manifest" id="the-manifest-placeholder" href="./<%= htmlWebpackPlugin.options.manifest %>">
 
   <script src="./redirect.js"></script>
@@ -61,7 +61,7 @@
 
 <body id="root">
   <noscript>
-    <video src="./nojs.mp4" class="nojs-video" muted loop autoplay playsinline disablePictureInPicture></video>
+    <video src="./assets/nojs.mp4" class="nojs-video" muted loop autoplay playsinline disablePictureInPicture></video>
     <h1>Telegram Web</h1>
     <p>Please, enable JavaScript to open the app.</p>
   </noscript>

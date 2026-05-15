@@ -128,6 +128,7 @@ const ServerAccountShell = () => {
   const [wsDisconnected, setWsDisconnected] = useState<{
     message: string;
     countdown: number;
+    canReconnect?: boolean;
   } | undefined>();
   const [systemDialog, setSystemDialog] = useState<{
     title: string;
@@ -209,6 +210,7 @@ const ServerAccountShell = () => {
       setWsDisconnected({
         message: err?.message || '业务 WebSocket 重连失败',
         countdown: WS_RECONNECT_SECONDS,
+        canReconnect: true,
       });
     } finally {
       setIsLoading(false);
@@ -221,13 +223,15 @@ const ServerAccountShell = () => {
       setSelectedAccountId(undefined);
       setWsDisconnected({
         message: detail.message || '业务 WebSocket 已断开',
-        countdown: WS_RECONNECT_SECONDS,
+        countdown: detail.canReconnect === false ? 0 : WS_RECONNECT_SECONDS,
+        canReconnect: detail.canReconnect !== false,
       });
     });
   }, []);
 
   useEffect(() => {
     if (!wsDisconnected) return undefined;
+    if (wsDisconnected.canReconnect === false) return undefined;
     if (wsDisconnected.countdown <= 0) {
       void reconnectServerAccountWs();
       return undefined;
@@ -260,6 +264,8 @@ const ServerAccountShell = () => {
             text: getServerSystemText(data, message.msg || '当前后台账号已在其他地方登录，请重新登录'),
             action: 'signOut',
           });
+          setFrameUrl(undefined);
+          setSelectedAccountId(undefined);
           break;
         }
 
@@ -660,21 +666,25 @@ const ServerAccountShell = () => {
             <span className="server-account-shell-placeholder-text">
               {wsDisconnected.message}
             </span>
-            <span className="server-account-shell-placeholder-text">
-              {wsDisconnected.countdown > 0
-                ? `${wsDisconnected.countdown} 秒后自动重连`
-                : '正在自动重连...'}
-            </span>
-            <Button
-              type="button"
-              size="tiny"
-              color="primary"
-              className="server-account-shell-reconnect-button"
-              disabled={isLoading}
-              onClick={reconnectServerAccountWs}
-            >
-              立即重连
-            </Button>
+            {wsDisconnected.canReconnect !== false && (
+              <>
+                <span className="server-account-shell-placeholder-text">
+                  {wsDisconnected.countdown > 0
+                    ? `${wsDisconnected.countdown} 秒后自动重连`
+                    : '正在自动重连...'}
+                </span>
+                <Button
+                  type="button"
+                  size="tiny"
+                  color="primary"
+                  className="server-account-shell-reconnect-button"
+                  disabled={isLoading}
+                  onClick={reconnectServerAccountWs}
+                >
+                  立即重连
+                </Button>
+              </>
+            )}
           </div>
         ) : frameUrl ? (
           <iframe

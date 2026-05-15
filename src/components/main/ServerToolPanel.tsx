@@ -155,6 +155,11 @@ const ServerToolPanel = ({
   const [loadedSpeech, setLoadedSpeech] = useState(false);
   const [loadedTranslateConfig, setLoadedTranslateConfig] = useState(false);
   const materialFileInputRef = useRef<HTMLInputElement>();
+  const sendAutoTypeRef = useRef<HTMLSelectElement>();
+  const sendAutoLanguageRef = useRef<HTMLSelectElement>();
+  const receiveAutoTypeRef = useRef<HTMLSelectElement>();
+  const receiveAutoLanguageRef = useRef<HTMLSelectElement>();
+  const pageLanguageRef = useRef<HTMLSelectElement>();
   const user = getServerUserInfo();
 
   function updateSettings(patch: Partial<ServerToolSettings>) {
@@ -245,6 +250,15 @@ const ServerToolPanel = ({
       void loadTranslateConfig();
     }
   }, [activePage, loadedSpeech, loadedTranslateConfig, loadGroups, loadTranslateConfig]);
+
+  useEffect(() => {
+    // Teact 创建 select 时会先写 value 再渲染 option，配置异步加载后需要主动同步原生控件。
+    if (sendAutoTypeRef.current) sendAutoTypeRef.current.value = String(settings.sendAutoType);
+    if (sendAutoLanguageRef.current) sendAutoLanguageRef.current.value = settings.sendAutoLanguage;
+    if (receiveAutoTypeRef.current) receiveAutoTypeRef.current.value = String(settings.receiveAutoType);
+    if (receiveAutoLanguageRef.current) receiveAutoLanguageRef.current.value = settings.receiveAutoLanguage;
+    if (pageLanguageRef.current) pageLanguageRef.current.value = settings.pageLanguage;
+  }, [settings]);
 
   async function handleSaveGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -454,17 +468,17 @@ const ServerToolPanel = ({
 
     setIsLoading(true);
     try {
-      await saveServerTranslateConfig(config);
+      const savedConfig = await saveServerTranslateConfig(config);
       const nextSettings = {
         ...settings,
-        sendAuto: Boolean(config.sendAuto),
-        sendAutoType: config.sendAutoType,
-        sendAutoLanguage: config.sendAutoLanguage,
-        receiveAuto: Boolean(config.receiveAuto),
-        receiveAutoType: config.receiveAutoType,
-        receiveAutoLanguage: config.receiveAutoLanguage,
+        sendAuto: Boolean(savedConfig.sendAuto),
+        sendAutoType: savedConfig.sendAutoType ?? settings.sendAutoType,
+        sendAutoLanguage: savedConfig.sendAutoLanguage || settings.sendAutoLanguage,
+        receiveAuto: Boolean(savedConfig.receiveAuto),
+        receiveAutoType: savedConfig.receiveAutoType ?? settings.receiveAutoType,
+        receiveAutoLanguage: savedConfig.receiveAutoLanguage || settings.receiveAutoLanguage,
       };
-      setTranslateConfig(config);
+      setTranslateConfig(savedConfig);
       setSettings(nextSettings);
       saveServerToolSettings(nextSettings);
       postServerToolMessageToFrame(frame, { type: 'server-tool-settings-updated', settings: nextSettings });
@@ -506,9 +520,20 @@ const ServerToolPanel = ({
     }
   }
 
-  function renderSelectOptions<T extends string | number>(items: { value: T; label: string }[]) {
+  function renderSelectOptions<T extends string | number>(
+    items: { value: T; label: string }[],
+    selectedValue?: string | number,
+  ) {
+    const currentValue = selectedValue === undefined ? undefined : String(selectedValue);
+
     return items.map((item) => (
-      <option key={item.value} value={item.value}>{item.label}</option>
+      <option
+        key={item.value}
+        value={String(item.value)}
+        selected={currentValue === String(item.value)}
+      >
+        {item.label}
+      </option>
     ));
   }
 
@@ -835,8 +860,15 @@ const ServerToolPanel = ({
   }
 
   function renderTranslate() {
+    const translateFormKey = [
+      settings.sendAutoType,
+      settings.sendAutoLanguage,
+      settings.receiveAutoType,
+      settings.receiveAutoLanguage,
+    ].join(':');
+
     return (
-      <div className="server-tool-form">
+      <div key={translateFormKey} className="server-tool-form">
         <section className="server-tool-section">
           <strong className="server-tool-section-title">{serverToolT('sendAutoTranslate')}</strong>
           <Toggle
@@ -852,21 +884,23 @@ const ServerToolPanel = ({
           <label className="server-tool-field">
             <span className="server-tool-field-label">{serverToolT('translateChannel')}</span>
             <select
+              ref={sendAutoTypeRef}
               className="server-tool-control"
-              value={settings.sendAutoType}
+              value={String(settings.sendAutoType)}
               onChange={(event) => updateSettings({ sendAutoType: Number(event.currentTarget.value) })}
             >
-              {renderSelectOptions(SERVER_TOOL_TRANSLATE_CHANNELS)}
+              {renderSelectOptions(SERVER_TOOL_TRANSLATE_CHANNELS, settings.sendAutoType)}
             </select>
           </label>
           <label className="server-tool-field">
             <span className="server-tool-field-label">{serverToolT('targetLanguage')}</span>
             <select
+              ref={sendAutoLanguageRef}
               className="server-tool-control"
-              value={settings.sendAutoLanguage}
+              value={String(settings.sendAutoLanguage)}
               onChange={(event) => updateSettings({ sendAutoLanguage: event.currentTarget.value })}
             >
-              {renderSelectOptions(SERVER_TOOL_LANGUAGES)}
+              {renderSelectOptions(SERVER_TOOL_LANGUAGES, settings.sendAutoLanguage)}
             </select>
           </label>
         </section>
@@ -881,21 +915,23 @@ const ServerToolPanel = ({
           <label className="server-tool-field">
             <span className="server-tool-field-label">{serverToolT('translateChannel')}</span>
             <select
+              ref={receiveAutoTypeRef}
               className="server-tool-control"
-              value={settings.receiveAutoType}
+              value={String(settings.receiveAutoType)}
               onChange={(event) => updateSettings({ receiveAutoType: Number(event.currentTarget.value) })}
             >
-              {renderSelectOptions(SERVER_TOOL_TRANSLATE_CHANNELS)}
+              {renderSelectOptions(SERVER_TOOL_TRANSLATE_CHANNELS, settings.receiveAutoType)}
             </select>
           </label>
           <label className="server-tool-field">
             <span className="server-tool-field-label">{serverToolT('targetLanguage')}</span>
             <select
+              ref={receiveAutoLanguageRef}
               className="server-tool-control"
-              value={settings.receiveAutoLanguage}
+              value={String(settings.receiveAutoLanguage)}
               onChange={(event) => updateSettings({ receiveAutoLanguage: event.currentTarget.value })}
             >
-              {renderSelectOptions(SERVER_TOOL_LANGUAGES)}
+              {renderSelectOptions(SERVER_TOOL_LANGUAGES, settings.receiveAutoLanguage)}
             </select>
           </label>
         </section>
@@ -930,11 +966,12 @@ const ServerToolPanel = ({
         <label className="server-tool-field">
           <span className="server-tool-field-label">{serverToolT('viewInterface')}</span>
           <select
+            ref={pageLanguageRef}
             className="server-tool-control"
-            value={settings.pageLanguage}
+            value={String(settings.pageLanguage)}
             onChange={(event) => updateSettings({ pageLanguage: event.currentTarget.value })}
           >
-            {renderSelectOptions(SERVER_TOOL_LANGUAGES)}
+            {renderSelectOptions(SERVER_TOOL_LANGUAGES, settings.pageLanguage)}
           </select>
         </label>
         <Button

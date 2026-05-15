@@ -108,7 +108,7 @@ const expirationTime = 12 * 60 * 60 * 1000; // 12 hours
 // Notification id is removed from soundPlayed cache after 3 seconds
 const soundPlayedDelay = 3 * 1000;
 const soundPlayedIds = new Set<string>();
-const notificationSound = new Audio('./notification.mp3');
+const notificationSound = new Audio('./assets/notification.mp3');
 notificationSound.setAttribute('mozaudiochannel', 'notification');
 
 export async function playNotifySound(id?: string, volume?: number) {

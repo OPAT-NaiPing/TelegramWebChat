@@ -135,8 +135,8 @@ function showNotification({
       count: 1,
       shouldReplaceHistory,
     },
-    icon: icon || 'icon-192x192.png',
-    badge: 'icon-192x192.png',
+    icon: icon || 'assets/icon-192x192.png',
+    badge: 'assets/icon-192x192.png',
     tag,
     // @ts-ignore
     vibrate: [200, 100, 200],

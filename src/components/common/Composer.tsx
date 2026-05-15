@@ -201,6 +201,7 @@ import WebPagePreview from '../middle/composer/WebPagePreview';
 import MessageEffect from '../middle/message/MessageEffect';
 import ReactionSelector from '../middle/message/reactions/ReactionSelector';
 import Button from '../ui/Button';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import ResponsiveHoverButton from '../ui/ResponsiveHoverButton';
 import Spinner from '../ui/Spinner';
 import TextTimer from '../ui/TextTimer';
@@ -214,6 +215,12 @@ import ReactionAnimatedEmoji from './reactions/ReactionAnimatedEmoji';
 import './Composer.scss';
 
 type ComposerType = 'messageList' | 'story';
+
+type ServerSendPreviewState = {
+  originalText: string;
+  translatedText: string;
+  resolve: (shouldSend: boolean) => void;
+};
 
 type OwnProps = {
   type: ComposerType;
@@ -574,6 +581,7 @@ const Composer = ({
   const [attachments, setAttachments] = useState<ApiAttachment[]>([]);
   const hasAttachments = Boolean(attachments.length);
   const [nextText, setNextText] = useState<ApiFormattedText | undefined>(undefined);
+  const [serverSendPreview, setServerSendPreview] = useState<ServerSendPreviewState>();
 
   useEffect(() => {
     if (!attachments.length || !attachments) {
@@ -615,6 +623,22 @@ const Composer = ({
     setAutoApprove: setShouldPaidMessageAutoApprove,
     handleWithConfirmation: handleActionWithPaymentConfirmation,
   } = usePaidMessageConfirmation(starsForAllMessages, isStarsBalanceModalOpen, starsBalance);
+
+  const requestServerSendPreviewConfirm = useLastCallback((originalText: string, translatedText: string) => {
+    return new Promise<boolean>((resolve) => {
+      setServerSendPreview({ originalText, translatedText, resolve });
+    });
+  });
+
+  const closeServerSendPreview = useLastCallback(() => {
+    serverSendPreview?.resolve(false);
+    setServerSendPreview(undefined);
+  });
+
+  const confirmServerSendPreview = useLastCallback(() => {
+    serverSendPreview?.resolve(true);
+    setServerSendPreview(undefined);
+  });
 
   const hasWebPagePreview = !hasAttachments && canAttachEmbedLinks && !noWebPage
     && webPagePreview?.webpageType === 'full';
@@ -1317,11 +1341,7 @@ const Composer = ({
               });
               if (serverToolSettings.previewTranslation
                 && translatedText !== text
-                && !window.confirm(
-                  `${serverToolT('serverToolSendPreviewTitle')}\n\n`
-                  + `${serverToolT('serverToolOriginalText')}：${text}\n\n`
-                  + `${serverToolT('serverToolTranslateResult')}：${translatedText}`,
-                )) {
+                && !await requestServerSendPreviewConfirm(text, translatedText)) {
                 return;
               }
               text = translatedText;
@@ -2690,6 +2710,24 @@ const Composer = ({
         setAutoApprove={setShouldPaidMessageAutoApprove}
         confirmHandler={paymentMessageConfirmDialogHandler}
       />
+      <ConfirmDialog
+        isOpen={Boolean(serverSendPreview)}
+        title={serverToolT('serverToolSendPreviewTitle')}
+        confirmLabel={serverToolT('send')}
+        confirmHandler={confirmServerSendPreview}
+        onClose={closeServerSendPreview}
+      >
+        <div className="server-send-preview">
+          <div className="server-send-preview-block">
+            <span className="server-send-preview-label">{serverToolT('serverToolOriginalText')}</span>
+            <p className="server-send-preview-text">{serverSendPreview?.originalText}</p>
+          </div>
+          <div className="server-send-preview-block translated">
+            <span className="server-send-preview-label">{serverToolT('serverToolTranslateResult')}</span>
+            <p className="server-send-preview-text">{serverSendPreview?.translatedText}</p>
+          </div>
+        </div>
+      </ConfirmDialog>
     </div>
   );
 };

@@ -1,9 +1,9 @@
 import 'webpack-dev-server';
-import 'dotenv/config';
 
 import WatchFilePlugin from '@mytonwallet/webpack-watch-file-plugin';
 import StatoscopeWebpackPlugin from '@statoscope/webpack-plugin';
-import { statSync } from 'fs';
+import { config as loadDotEnv } from 'dotenv';
+import { existsSync, statSync } from 'fs';
 import { GitRevisionPlugin } from 'git-revision-webpack-plugin';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
 import MiniCssExtractPlugin from 'mini-css-extract-plugin';
@@ -20,11 +20,31 @@ import {
 import { PRODUCTION_URL } from './src/config.ts';
 import { version as appVersion } from './package.json' with { type: 'json' };
 
+const SELECTED_APP_ENV = process.env.APP_ENV || 'production';
+process.env.APP_ENV = SELECTED_APP_ENV;
+
+[
+  path.resolve(__dirname, '.env'),
+  path.resolve(__dirname, `.env.${SELECTED_APP_ENV}`),
+].forEach((envPath, index) => {
+  if (!existsSync(envPath)) return;
+
+  loadDotEnv({
+    path: envPath,
+    override: index > 0,
+    // 通用配置先加载，环境专用配置后加载并覆盖，避免生产包打入调试地址。
+    override: index > 0,
+  });
+});
+process.env.APP_ENV = SELECTED_APP_ENV;
+
 const {
   HEAD,
   APP_ENV = 'production',
   APP_MOCKED_CLIENT = '',
   SERVER_ACCOUNT_LOGIN = '',
+  BASE_API = '',
+  BASE_WS = '',
   SERVER_BASE_API = '',
   SERVER_BASE_WS = '',
   SERVER_SKIP_TURNSTILE = '',
@@ -43,27 +63,6 @@ const {
   APP_TITLE = DEFAULT_APP_TITLE,
 } = process.env;
 
-function getServerImageCspSources() {
-  const sources = new Set<string>();
-
-  [SERVER_BASE_API, SERVER_BASE_WS].filter(Boolean).forEach((value) => {
-    try {
-      const url = new URL(value.replace(/^ws/, 'http'));
-      const protocol = url.protocol;
-
-      sources.add(`${protocol}//${url.hostname}`);
-      sources.add(`${protocol}//${url.host}`);
-      sources.add(`${protocol}//${url.hostname}:*`);
-    } catch (err) {
-      // 旧服务地址未配置或格式异常时不额外放开图片源。
-    }
-  });
-
-  return Array.from(sources).join(' ');
-}
-
-const SERVER_IMAGE_CSP_SOURCES = getServerImageCspSources();
-
 const CSP = `
   default-src 'self';
   connect-src 'self' wss://*.web.telegram.org blob: http: https: ws: wss:
@@ -71,7 +70,7 @@ const CSP = `
   script-src 'self' 'wasm-unsafe-eval'
     https://t.me/_websync_ https://telegram.me/_websync_ https://challenges.cloudflare.com;
   style-src 'self' 'unsafe-inline';
-  img-src 'self' data: blob: ${SERVER_IMAGE_CSP_SOURCES} https://ss3.4sqi.net/img/categories_v2/;
+  img-src 'self' data: blob: http: https:;
   media-src 'self' blob: data:;
   object-src 'none';
   frame-src http: https:
@@ -135,9 +134,9 @@ export default function createConfig(
     },
 
     output: {
-      filename: '[name].[contenthash].js',
-      chunkFilename: '[id].[chunkhash].js',
-      assetModuleFilename: '[name].[contenthash][ext]',
+      filename: 'assets/[name].[contenthash].js',
+      chunkFilename: 'assets/[id].[chunkhash].js',
+      assetModuleFilename: 'assets/[name].[contenthash][ext]',
       path: path.resolve(__dirname, 'dist'),
       clean: true,
     },
@@ -238,14 +237,16 @@ export default function createConfig(
         template: 'src/index.html',
       }),
       new MiniCssExtractPlugin({
-        filename: '[name].[contenthash].css',
-        chunkFilename: '[name].[chunkhash].css',
+        filename: 'assets/[name].[contenthash].css',
+        chunkFilename: 'assets/[name].[chunkhash].css',
         ignoreOrder: true,
       }),
       new EnvironmentPlugin({
         APP_ENV,
         APP_MOCKED_CLIENT,
         SERVER_ACCOUNT_LOGIN,
+        BASE_API,
+        BASE_WS,
         SERVER_BASE_API,
         SERVER_BASE_WS,
         SERVER_SKIP_TURNSTILE,

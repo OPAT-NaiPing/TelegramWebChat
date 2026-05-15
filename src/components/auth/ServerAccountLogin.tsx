@@ -35,8 +35,8 @@ declare global {
 
 const ServerAccountLogin = () => {
   const { initApi } = getActions();
-  const [username, setUsername] = useState('333333');
-  const [password, setPassword] = useState('333333');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();

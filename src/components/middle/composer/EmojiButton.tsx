@@ -31,7 +31,7 @@ const EmojiButton: FC<OwnProps> = ({
     focus && 'focus',
   );
 
-  const src = `./img-apple-64/${emoji.image}.png`;
+  const src = `./assets/img-apple-64/${emoji.image}.png`;
   const isLoaded = LOADED_EMOJIS.has(src);
 
   return (

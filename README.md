@@ -22,6 +22,8 @@ Obtain API ID and API hash on [my.telegram.org](https://my.telegram.org) and pop
 
 ```sh
 npm run dev
+
+npm run build:production
 ```
 
 ### Invoking API from console

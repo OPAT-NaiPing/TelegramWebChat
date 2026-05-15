@@ -64,17 +64,17 @@ export function initializeSounds() {
   if (sounds) {
     return;
   }
-  const joinAudio = new Audio('./voicechat_join.mp3');
-  const connectingAudio = new Audio('./voicechat_connecting.mp3');
+  const joinAudio = new Audio('./assets/voicechat_join.mp3');
+  const connectingAudio = new Audio('./assets/voicechat_connecting.mp3');
   connectingAudio.loop = true;
-  const leaveAudio = new Audio('./voicechat_leave.mp3');
-  const allowTalkAudio = new Audio('./voicechat_onallowtalk.mp3');
-  const busyAudio = new Audio('./call_busy.mp3');
-  const connectAudio = new Audio('./call_connect.mp3');
-  const endAudio = new Audio('./call_end.mp3');
-  const incomingAudio = new Audio('./call_incoming.mp3');
+  const leaveAudio = new Audio('./assets/voicechat_leave.mp3');
+  const allowTalkAudio = new Audio('./assets/voicechat_onallowtalk.mp3');
+  const busyAudio = new Audio('./assets/call_busy.mp3');
+  const connectAudio = new Audio('./assets/call_connect.mp3');
+  const endAudio = new Audio('./assets/call_end.mp3');
+  const incomingAudio = new Audio('./assets/call_incoming.mp3');
   incomingAudio.loop = true;
-  const ringingAudio = new Audio('./call_ringing.mp3');
+  const ringingAudio = new Audio('./assets/call_ringing.mp3');
   ringingAudio.loop = true;
 
   sounds = {
