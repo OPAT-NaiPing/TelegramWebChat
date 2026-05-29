@@ -126,6 +126,7 @@ export default function createConfig(
         },
         {
           directory: path.resolve(__dirname, 'node_modules/emoji-data-ios'),
+          publicPath: '/assets',
         },
         {
           directory: path.resolve(__dirname, 'node_modules/opus-recorder/dist'),

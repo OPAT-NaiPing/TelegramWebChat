@@ -45,6 +45,14 @@ function getWebSocketErrorContext(website?: string, client?: WebSocket, relayCon
   };
 }
 
+function shouldLogCloseAsError(event: CloseEvent, closedByClient: boolean) {
+  if (closedByClient) return false;
+  if (event.code === 1000) return false;
+  if (event.code === 1005 && event.wasClean) return false;
+
+  return true;
+}
+
 export default class PromisedWebSockets {
   private closed: boolean;
 
@@ -61,6 +69,10 @@ export default class PromisedWebSockets {
   private website?: string;
 
   private disconnectedCallback: () => void;
+
+  private connectedAt?: number;
+
+  private closedByClient = false;
 
   constructor(disconnectedCallback: () => void) {
     this.client = undefined;
@@ -147,6 +159,8 @@ export default class PromisedWebSockets {
       this.resolveRead = resolve;
     });
     this.closed = false;
+    this.closedByClient = false;
+    this.connectedAt = undefined;
     this.website = this.getWebSocketLink(ip, port, isTestServer, isPremium, dcId);
     this.client = new WebSocket(this.website, 'binary');
     return new Promise((resolve, reject) => {
@@ -154,6 +168,7 @@ export default class PromisedWebSockets {
       let hasResolved = false;
       let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
       this.client.onopen = () => {
+        this.connectedAt = Date.now();
         this.receive();
         resolve(this);
         hasResolved = true;
@@ -168,12 +183,18 @@ export default class PromisedWebSockets {
       };
       this.client.onclose = (event) => {
         const { code, reason, wasClean } = event;
-        if (code !== 1000) {
+        const logContext = {
+          ...getWebSocketErrorContext(this.website, this.client, relayConfig),
+          closedByClient: this.closedByClient,
+          durationMs: this.connectedAt ? Date.now() - this.connectedAt : undefined,
+        };
+        const logMessage = `Socket ${ip} closed. Code: ${code}, reason: ${reason}, was clean: ${wasClean}`;
+        if (shouldLogCloseAsError(event, this.closedByClient)) {
           // eslint-disable-next-line no-console
-          console.error(
-            `Socket ${ip} closed. Code: ${code}, reason: ${reason}, was clean: ${wasClean}`,
-            getWebSocketErrorContext(this.website, this.client, relayConfig),
-          );
+          console.error(logMessage, logContext);
+        } else if (relayConfig?.enabled) {
+          // eslint-disable-next-line no-console
+          console.debug(logMessage, logContext);
         }
 
         this.resolveRead?.(false);
@@ -221,6 +242,7 @@ export default class PromisedWebSockets {
   }
 
   close() {
+    this.closedByClient = true;
     this.client?.close();
     this.closed = true;
   }
