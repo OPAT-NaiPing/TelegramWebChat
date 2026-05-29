@@ -1320,6 +1320,7 @@ function isSameServerSharedSession(current: SharedSessionData | undefined, next:
   return current?.serverAccountId === next.serverAccountId
     && current?.dcId === next.dcId
     && getSharedSessionAuthKey(current) === getSharedSessionAuthKey(next)
+    && current?.serverProxyIp === next.serverProxyIp
     && JSON.stringify(current?.serverDeviceConfig || {}) === JSON.stringify(next.serverDeviceConfig || {});
 }
 
