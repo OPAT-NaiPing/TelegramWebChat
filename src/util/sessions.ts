@@ -114,6 +114,9 @@ export function loadStoredSession(): ApiSessionData | undefined {
       return acc;
     }, {} as Record<number, string>),
     isTest: slotData.isTest || undefined,
+    serverAccountId: slotData.serverAccountId,
+    serverAccountTitle: slotData.serverAccountTitle,
+    serverProxyIp: slotData.serverProxyIp,
     serverDeviceConfig: slotData.serverDeviceConfig,
   };
 

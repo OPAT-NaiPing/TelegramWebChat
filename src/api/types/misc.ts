@@ -28,6 +28,7 @@ export interface ApiInitialArgs {
   shouldAllowHttpTransport?: boolean;
   shouldForceHttpTransport?: boolean;
   shouldDebugExportedSenders?: boolean;
+  serverRelay?: ApiServerRelayConfig;
   langCode: string;
   isTestServerRequested?: boolean;
   accountIds?: string[];
@@ -125,8 +126,19 @@ export interface ApiSessionData {
   mainDcId: number;
   keys: Record<number, string>;
   isTest?: true;
+  serverAccountId?: string;
+  serverAccountTitle?: string;
+  serverProxyIp?: string;
   serverDeviceConfig?: ApiServerDeviceConfig;
 }
+
+export type ApiServerRelayConfig = {
+  enabled: boolean;
+  accountId?: string;
+  deviceMode?: number;
+  proxyIp?: string;
+  relayUrl?: string;
+};
 
 export type ApiServerDeviceConfig = {
   apiId?: number;

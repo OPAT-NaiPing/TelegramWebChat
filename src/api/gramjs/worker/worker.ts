@@ -151,13 +151,24 @@ onmessage = ({ data }: OriginMessageEvent) => {
 function handleErrors() {
   self.onerror = (e) => {
     console.error(e);
-    sendToOrigin({ type: 'unhandledError', error: { message: e.error.message || 'Uncaught exception in worker' } });
+    sendToOrigin({ type: 'unhandledError', error: { message: getWorkerErrorMessage(e.error, 'Worker 未捕获异常') } });
   };
 
   self.addEventListener('unhandledrejection', (e) => {
     console.error(e);
-    sendToOrigin({ type: 'unhandledError', error: { message: e.reason.message || 'Uncaught rejection in worker' } });
+    sendToOrigin({ type: 'unhandledError', error: { message: getWorkerErrorMessage(e.reason, 'Worker 未处理的异步异常') } });
   });
+}
+
+function getWorkerErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error) return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message) return message;
+  }
+
+  return fallback;
 }
 
 const sendToOriginOnTickEnd = throttleWithTickEnd(() => {

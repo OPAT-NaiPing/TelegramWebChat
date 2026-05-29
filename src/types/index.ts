@@ -63,6 +63,7 @@ export type SessionUserInfo = {
   emojiStatusId?: string;
   serverAccountId?: string;
   serverAccountTitle?: string;
+  serverProxyIp?: string;
 };
 
 export type SharedSessionData = {

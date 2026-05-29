@@ -18,7 +18,7 @@ export default class HttpStream {
 
   private resolveRead: VoidFunction | undefined;
 
-  private rejectRead: VoidFunction | undefined;
+  private rejectRead: ((reason?: unknown) => void) | undefined;
 
   private disconnectedCallback: VoidFunction | undefined;
 
@@ -44,6 +44,9 @@ export default class HttpStream {
     await this.canRead;
 
     const data = this.stream.shift()!;
+    if (!data) {
+      throw closeError;
+    }
     if (this.stream.length === 0) {
       this.canRead = new Promise((resolve, reject) => {
         this.resolveRead = resolve;
@@ -112,7 +115,7 @@ export default class HttpStream {
 
   handleDisconnect() {
     this.disconnectedCallback?.();
-    if (this.rejectRead) this.rejectRead();
+    if (this.rejectRead) this.rejectRead(closeError);
   }
 
   close() {

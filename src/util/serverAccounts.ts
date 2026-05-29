@@ -52,6 +52,19 @@ type LoginResponse = {
   };
 };
 
+type ServerLingoResponse = {
+  code?: number;
+  msg?: string;
+  data?: {
+    L?: string;
+    language?: string;
+    locale?: string;
+    reload?: boolean;
+    [key: string]: any;
+  };
+  [key: string]: any;
+};
+
 type ServerUserInfo = {
   ID?: number | string;
   id?: number | string;
@@ -84,6 +97,12 @@ export type ServerAccount = {
   auth?: string;
   cache?: string;
   Cache?: string;
+  proxyIp?: string;
+  ProxyIp?: string;
+  proxy_ip?: string;
+  proxy?: string;
+  proxyUrl?: string;
+  proxyURL?: string;
   mode?: number | string;
   keys?: Record<string, string>;
   [key: string]: any;
@@ -208,7 +227,7 @@ function rejectPendingServerWsRequests(error: Error) {
 }
 
 function formatBrowserLogReason(reason: any) {
-  if (!reason) return { message: '鏈煡閿欒' };
+  if (!reason) return { message: '未知错误' };
   if (reason instanceof Error) {
     return {
       message: reason.message,
@@ -248,10 +267,16 @@ export function isServerAccountFrame() {
     && new URLSearchParams(window.location.search).get(SERVER_ACCOUNT_FRAME_QUERY) === '1';
 }
 
-export function getServerAccountFrameUrl(slot: number) {
+export function getServerAccountFrameUrl(slot: number, serverAccountId?: string) {
   const url = new URL(window.location.href);
 
   url.searchParams.set(SERVER_ACCOUNT_FRAME_QUERY, '1');
+  if (serverAccountId) {
+    // 服务账号 ID 只用于外层 iframe 重建，避免槽位异常复用时仍显示上一个账号界面。
+    url.searchParams.set('serverAccountId', serverAccountId);
+  } else {
+    url.searchParams.delete('serverAccountId');
+  }
   if (slot === 1) {
     url.searchParams.delete('account');
   } else {
@@ -301,7 +326,7 @@ function restoreState() {
 export function getRequiredServerState() {
   const currentState = restoreState();
   if (!currentState?.token) {
-    throw new Error('鏃ф湇鍔＄櫥褰曟€佸凡澶辨晥锛岃閲嶆柊鐧诲綍');
+    throw new Error('旧服务登录态已失效，请重新登录');
   }
 
   return currentState;
@@ -310,7 +335,7 @@ export function getRequiredServerState() {
 function isServerAuthExpiredMessage(message?: string) {
   if (!message) return false;
 
-  return /token|鐧诲綍|鐧婚檰|閴存潈|璁よ瘉|鎺堟潈|杩囨湡|澶辨晥|鏃犳晥|鏈櫥褰晐401|403/i.test(message);
+  return /token|登录|登陆|鉴权|认证|授权|过期|失效|无效|未登录|401|403/i.test(message);
 }
 
 export function getServerBaseApi() {
@@ -507,7 +532,7 @@ async function requestJson<T>(url: string, data: object, headers?: Record<string
     });
 
     if (!response.ok) {
-      throw new Error(`璇锋眰澶辫触锛?{response.status}`);
+      throw new Error(`请求失败：${response.status}`);
     }
 
     return await response.json();
@@ -516,17 +541,140 @@ async function requestJson<T>(url: string, data: object, headers?: Record<string
   }
 }
 
+async function requestGetJson<T>(
+  url: string,
+  data: Record<string, any> = {},
+  headers?: Record<string, string>,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const requestUrl = new URL(url, window.location.href);
+
+  Object.entries(data).forEach(([key, value]) => {
+    if (value === undefined) return;
+
+    const stringValue = String(value ?? '');
+    if (!stringValue) return;
+
+    requestUrl.searchParams.set(key, stringValue);
+  });
+
+  try {
+    const response = await fetch(requestUrl.toString(), {
+      method: 'GET',
+      headers: {
+        ...getServerSignedHeaders(data),
+        ...headers,
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorMessage = response.status === 401 || response.status === 403
+        ? '旧服务登录态已失效，请重新登录'
+        : `请求失败，状态码 ${response.status}`;
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function getServerUserId(user?: ServerUserInfo) {
+  const userId = user?.ID ?? user?.id;
+  return userId === undefined ? '' : String(userId);
+}
+
+function normalizeServerLingo(language: unknown) {
+  if (typeof language !== 'string' && typeof language !== 'number') return undefined;
+
+  const value = String(language).trim().toLowerCase();
+  if (!value) return undefined;
+  if (value === 'zh' || value.startsWith('zh-hans') || value === 'zh-cn') return 'cn';
+  if (value.startsWith('zh-hant') || value === 'zh-tw' || value === 'zh-hk') return 'tw';
+
+  return value.split('-')[0] || value;
+}
+
+function applyServerLingo(language: unknown) {
+  const normalizedLanguage = normalizeServerLingo(language);
+  if (!normalizedLanguage) return;
+
+  try {
+    // 与 serverTools.ts 的本地设置键保持一致，避免在账号模块反向导入工具模块造成循环依赖。
+    const settingsStorageKey = 'serverToolSettings';
+    const currentSettings = JSON.parse(localStorage.getItem(settingsStorageKey) || '{}') as Record<string, any>;
+    const nextSettings = {
+      ...currentSettings,
+      pageLanguage: normalizedLanguage,
+    };
+    localStorage.setItem(settingsStorageKey, JSON.stringify(nextSettings));
+    window.dispatchEvent(new CustomEvent('server-tool-settings-updated', { detail: nextSettings }));
+  } catch (err) {
+    // 语言同步失败不影响业务 WebSocket 建连，工具页下次打开仍会使用默认语言。
+  }
+}
+
+function handleServerAuthExpiredBeforeWs(message = '旧服务登录态已失效，请重新登录') {
+  rejectPendingServerWsRequests(new Error(message));
+  signOutServerAccount();
+  dispatchServerWsDisconnected({
+    message,
+    canReconnect: false,
+  });
+}
+
+async function checkServerLingoBeforeWs() {
+  const baseApi = getServerBaseApi();
+  if (!baseApi) {
+    throw new Error('未配置 SERVER_BASE_API');
+  }
+
+  const currentState = getRequiredServerState();
+  let response: ServerLingoResponse;
+  try {
+    response = await requestGetJson<ServerLingoResponse>(
+      normalizeServerUrl(baseApi, '/user/getLingo'),
+      {},
+      {
+        'x-token': currentState.token,
+        'x-user-id': getServerUserId(currentState.user),
+      },
+    );
+  } catch (err: any) {
+    const message = err?.message || '旧服务登录态已失效，请重新登录';
+    if (isServerAuthExpiredMessage(message)) {
+      handleServerAuthExpiredBeforeWs('旧服务登录态已失效，请重新登录');
+    }
+    throw err;
+  }
+
+  const responseMessage = response.msg || '旧服务登录态已失效，请重新登录';
+  if (response.data?.reload || (response.code !== undefined && response.code !== 0)) {
+    if (response.data?.reload || isServerAuthExpiredMessage(responseMessage)) {
+      handleServerAuthExpiredBeforeWs('旧服务登录态已失效，请重新登录');
+      throw new Error('旧服务登录态已失效，请重新登录');
+    }
+
+    throw new Error(responseMessage);
+  }
+
+  applyServerLingo(response.data?.L ?? response.data?.language ?? response.data?.locale);
+}
+
 export async function loginServerAccount(username: string, password: string, token: string) {
   const baseApi = getServerBaseApi();
   if (!baseApi) {
-    throw new Error('鏈厤缃?SERVER_BASE_API');
+    throw new Error('未配置 SERVER_BASE_API');
   }
 
   const data = { username, password, captchaId: '', captcha: '', token };
   const response = await requestJson<LoginResponse>(normalizeServerUrl(baseApi, '/base/login'), data);
 
   if (response.code !== 0 || !response.data?.token) {
-    throw new Error(response.msg || '鐧诲綍澶辫触');
+    throw new Error(response.msg || '登录失败');
   }
 
   isServerWsReconnectBlocked = false;
@@ -604,22 +752,7 @@ function blockServerWsReconnect(message: string) {
   });
 }
 
-function connectServerWs() {
-  if (isServerAccountFrame()) {
-    return Promise.reject(new Error('鍘熺敓椤甸潰涓嶇洿鎺ヨ繛鎺ヤ笟鍔?WebSocket锛岃閫氳繃澶栧眰椤甸潰杞彂璇锋眰'));
-  }
-
-  if (isServerWsReconnectBlocked) {
-    return Promise.reject(new Error(serverWsReconnectBlockedMessage || '业务 WebSocket 已停止重连'));
-  }
-
-  if (socket?.readyState === WebSocket.OPEN) {
-    return Promise.resolve(socket);
-  }
-  if (connectingPromise) {
-    return connectingPromise;
-  }
-
+function openServerWsConnection() {
   const wsUrl = buildWsUrl();
   const oldSocket = socket;
   if (oldSocket && oldSocket.readyState !== WebSocket.CLOSED) {
@@ -641,7 +774,7 @@ function connectServerWs() {
       }
       silentClosingSockets.add(nextSocket);
       nextSocket.close();
-      reject(new Error(`涓氬姟 WebSocket 杩炴帴瓒呮椂锛?{wsUrl}`));
+      reject(new Error(`业务 WebSocket 连接超时：${wsUrl}`));
     }, WS_CONNECT_TIMEOUT);
 
     nextSocket.onopen = () => {
@@ -687,13 +820,13 @@ function connectServerWs() {
       isSettled = true;
       connectingPromise = undefined;
       window.clearTimeout(timer);
-      reject(new Error(`涓氬姟 WebSocket 杩炴帴澶辫触锛?{wsUrl}`));
+      reject(new Error(`业务 WebSocket 连接失败：${wsUrl}`));
     };
 
     nextSocket.onclose = (event) => {
       const isSilentClose = silentClosingSockets.has(nextSocket);
       const isCurrentSocket = socket === nextSocket;
-      const message = `涓氬姟 WebSocket 宸叉柇寮€锛?{event.code || '鏈煡'} ${event.reason || ''}`.trim();
+      const message = `业务 WebSocket 已断开：${event.code || '未知'} ${event.reason || ''}`.trim();
       window.clearTimeout(timer);
 
       if (!isCurrentSocket) {
@@ -725,12 +858,38 @@ function connectServerWs() {
   return connectingPromise;
 }
 
+function connectServerWs() {
+  if (isServerAccountFrame()) {
+    return Promise.reject(new Error('原生页面不直接连接业务 WebSocket，请通过外层页面转发请求'));
+  }
+
+  if (isServerWsReconnectBlocked) {
+    return Promise.reject(new Error(serverWsReconnectBlockedMessage || '业务 WebSocket 已停止重连'));
+  }
+
+  if (socket?.readyState === WebSocket.OPEN) {
+    return Promise.resolve(socket);
+  }
+  if (connectingPromise) {
+    return connectingPromise;
+  }
+
+  connectingPromise = checkServerLingoBeforeWs()
+    .then(() => openServerWsConnection())
+    .catch((err) => {
+      connectingPromise = undefined;
+      throw err;
+    });
+
+  return connectingPromise;
+}
+
 export function sendServerWsMessage<T = AccountListResponse>(message: Record<string, any>): Promise<T> {
   return new Promise((resolve, reject) => {
     const uuid = crypto.randomUUID();
     const timer = window.setTimeout(() => {
       pendingRequests.delete(uuid);
-      reject(new Error('涓氬姟 WebSocket 璇锋眰瓒呮椂'));
+      reject(new Error('业务 WebSocket 请求超时'));
     }, REQUEST_TIMEOUT);
 
     pendingRequests.set(uuid, (value) => {
@@ -786,14 +945,14 @@ export function setupServerBrowserLogReporter() {
 function requestServerWsViaShell<T = AccountListResponse>(message: Record<string, any>): Promise<T> {
   return new Promise((resolve, reject) => {
     if (!window.parent || window.parent === window) {
-      reject(new Error('鏈壘鍒板灞傞〉闈紝鏃犳硶杞彂涓氬姟 WebSocket 璇锋眰'));
+      reject(new Error('未找到外层页面，无法转发业务 WebSocket 请求'));
       return;
     }
 
     const requestId = crypto.randomUUID();
     const timer = window.setTimeout(() => {
       window.removeEventListener('message', handleMessage);
-      reject(new Error('涓氬姟 WebSocket 杞彂璇锋眰瓒呮椂'));
+      reject(new Error('业务 WebSocket 转发请求超时'));
     }, REQUEST_TIMEOUT);
 
     function handleMessage(event: MessageEvent) {
@@ -845,7 +1004,7 @@ export async function handleServerAccountWsRequestMessage(event: MessageEvent) {
     event.source?.postMessage({
       type: SERVER_ACCOUNT_WS_RESPONSE_TYPE,
       requestId,
-      error: err?.message || '涓氬姟 WebSocket 璇锋眰澶辫触',
+      error: err?.message || '业务 WebSocket 请求失败',
     } satisfies ServerAccountWsResponseMessage, { targetOrigin: window.location.origin });
   }
 }
@@ -861,7 +1020,7 @@ export async function requestServerWs<T = AccountListResponse>(message: Record<s
 
 export async function reconnectServerWs() {
   if (isServerAccountFrame()) {
-    throw new Error('鍘熺敓椤甸潰涓嶇洿鎺ラ噸杩炰笟鍔?WebSocket');
+    throw new Error('原生页面不直接重连业务 WebSocket');
   }
 
   if (isServerWsReconnectBlocked) {
@@ -888,7 +1047,7 @@ export async function changeServerPassword(data: {
 }) {
   const baseApi = getServerBaseApi();
   if (!baseApi) {
-    throw new Error('鏈厤缃?SERVER_BASE_API');
+    throw new Error('未配置 SERVER_BASE_API');
   }
 
   const currentState = getRequiredServerState();
@@ -899,7 +1058,7 @@ export async function changeServerPassword(data: {
   );
 
   if (response.code !== 0) {
-    throw new Error(response.msg || '淇敼瀵嗙爜澶辫触');
+    throw new Error(response.msg || '修改密码失败');
   }
 
   return response;
@@ -924,16 +1083,16 @@ export async function fetchServerAccounts(content = '', offset?: unknown, search
   const responseData = response.data;
   if (!Array.isArray(responseData)) {
     if (responseData?.code) {
-      const message = responseData.msg || response.msg || '鑾峰彇璐﹀彿鍒楄〃澶辫触';
+      const message = responseData.msg || response.msg || '获取账号列表失败';
       if (isServerAuthExpiredMessage(message)) {
-        throw new Error('鏃ф湇鍔＄櫥褰曟€佸凡澶辨晥锛岃閲嶆柊鐧诲綍');
+        throw new Error('旧服务登录态已失效，请重新登录');
       }
       throw new Error(message);
     }
     if (isServerAuthExpiredMessage(response.msg)) {
-      throw new Error('鏃ф湇鍔＄櫥褰曟€佸凡澶辨晥锛岃閲嶆柊鐧诲綍');
+      throw new Error('旧服务登录态已失效，请重新登录');
     }
-    throw new Error(response.msg || '鑾峰彇璐﹀彿鍒楄〃澶辫触');
+    throw new Error(response.msg || '获取账号列表失败');
   }
 
   const accounts = responseData;
@@ -967,7 +1126,7 @@ export async function checkServerAccountOnline(accountId: string | number) {
   const data = response.data as { code?: number; msg?: string } | undefined;
   const businessCode = typeof data?.code === 'number' ? data.code : 0;
   if (businessCode !== 0) {
-    throw new Error(data?.msg || response.msg || '璐﹀彿涓嶅湪绾匡紝鏃犳硶杞藉叆');
+    throw new Error(data?.msg || response.msg || '账号不在线，无法载入');
   }
 
   return response;
@@ -1012,6 +1171,18 @@ function pickAuthKey(account: ServerAccount, dcId: number) {
     ?? account.keys?.[dcId]
     ?? account.keys?.[String(dcId)]
     ?? parseServerAccountCacheJson(account)?.key;
+}
+
+function pickProxyIp(account: ServerAccount) {
+  return String(
+    account.proxyIp
+    ?? account.ProxyIp
+    ?? account.proxy_ip
+    ?? account.proxy
+    ?? account.proxyUrl
+    ?? account.proxyURL
+    ?? '',
+  ).trim();
 }
 
 function pickServerAccountCache(account: ServerAccount) {
@@ -1093,7 +1264,7 @@ export function getAccountTitle(account: ServerAccount) {
     || account.account
     || account.phone
     || account.remark
-    || `璐﹀彿 ${account.ID ?? account.id ?? ''}`.trim();
+    || `账号 ${account.ID ?? account.id ?? ''}`.trim();
 }
 
 export function getServerAccountId(account: ServerAccount) {
@@ -1186,11 +1357,11 @@ export function buildSessionFromServerAccount(account: ServerAccount): ApiSessio
   const normalizedAuthKey = authKey ? normalizeAuthKey(authKey) : undefined;
 
   if (!dcId || Number.isNaN(dcId)) {
-    throw new Error('璐﹀彿缂哄皯 dcid');
+    throw new Error('账号缺少 dcid');
   }
 
   if (!normalizedAuthKey) {
-    throw new Error('璐﹀彿缂哄皯 auth key');
+    throw new Error('账号缺少 auth key');
   }
 
   return {
@@ -1216,6 +1387,7 @@ function buildSharedSessionFromServerAccount(account: ServerAccount): SharedSess
     avatarUri: account.avatarUri,
     serverAccountId,
     serverAccountTitle: title,
+    serverProxyIp: pickProxyIp(account) || undefined,
     serverDeviceConfig,
   };
 
@@ -1232,7 +1404,8 @@ export function importServerAccountSession(account: ServerAccount) {
 
   if (!isSameServerSharedSession(currentSlotData, sharedSessionData)) {
     clearStoredSession(ACCOUNT_SLOT);
-    // 鍏堝啓鍏ヨ处鍙峰熀纭€灞曠ず鏁版嵁锛涜繛鎺ュ畼鏂?apiws 鍚庝細鐢ㄧ湡瀹?Telegram 鐢ㄦ埛淇℃伅瑕嗙洊銆?    writeSlotSession(ACCOUNT_SLOT, sharedSessionData);
+    // 先写入账号基础展示数据；连接官方 apiws 后会用真实 Telegram 用户信息覆盖。
+    writeSlotSession(ACCOUNT_SLOT, sharedSessionData);
   }
   if (sharedSessionData.serverAccountId) {
     localStorage.setItem(getSelectedAccountStorageKey(), sharedSessionData.serverAccountId);
@@ -1289,7 +1462,7 @@ export function importServerAccountsIntoNativeSlots(accounts: ServerAccount[]) {
   saveServerAccountSlotMap(slotMap);
 
   if (!accounts.length) {
-    throw new Error('娌℃湁鍙敤璐﹀彿');
+    throw new Error('没有可用账号');
   }
 
   return getAccountSlotUrl(1);
@@ -1307,13 +1480,11 @@ export function importServerAccountIntoNativeSlot(account: ServerAccount) {
   let slot = storedSlot?.slot;
 
   if (!slot) {
-    const storedServerSlotNumbers = new Set(Object.values(storedSlots).map(({ slot: currentSlot }) => currentSlot));
-    const occupiedNativeSlots = new Set(getStoredSlotNumbers().filter((slotNumber) => {
-      return !storedServerSlotNumbers.has(slotNumber);
-    }));
+    // 新服务账号必须避开所有已存在槽位，避免覆盖 slot 1 后 iframe 仍展示旧账号状态。
+    const occupiedSlots = new Set(getStoredSlotNumbers());
 
     slot = 1;
-    while (occupiedNativeSlots.has(slot)) {
+    while (occupiedSlots.has(slot)) {
       slot += 1;
     }
   }

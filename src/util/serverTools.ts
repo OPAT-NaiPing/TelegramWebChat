@@ -55,6 +55,7 @@ export type ServerTranslateConfig = {
 
 export type ServerToolSettings = {
   autoTranslation: boolean;
+  backendProxyMode: boolean;
   previewTranslation: boolean;
   pageLanguage: string;
   sendAuto: boolean;
@@ -108,6 +109,7 @@ const SERVER_TOOL_UPLOAD_SOURCE_TYPE = 6;
 
 export const DEFAULT_SERVER_TOOL_SETTINGS: ServerToolSettings = {
   autoTranslation: false,
+  backendProxyMode: false,
   previewTranslation: false,
   pageLanguage: 'cn',
   sendAuto: false,
@@ -352,6 +354,10 @@ export function loadServerToolSettings(): ServerToolSettings {
 export function saveServerToolSettings(settings: ServerToolSettings) {
   const normalizedSettings = {
     ...settings,
+    backendProxyMode: normalizeServerToolBoolean(
+      settings.backendProxyMode,
+      DEFAULT_SERVER_TOOL_SETTINGS.backendProxyMode,
+    ),
     sendAutoLanguage: normalizeServerTranslateLanguage(
       settings.sendAutoLanguage,
       DEFAULT_SERVER_TOOL_SETTINGS.sendAutoLanguage,

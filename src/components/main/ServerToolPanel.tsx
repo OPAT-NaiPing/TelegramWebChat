@@ -963,6 +963,11 @@ const ServerToolPanel = ({
           label={serverToolT('translationAutomatic')}
           onChange={(checked) => updateSettings({ autoTranslation: checked })}
         />
+        <Toggle
+          checked={settings.backendProxyMode}
+          label={serverToolT('backendProxyMode')}
+          onChange={(checked) => updateSettings({ backendProxyMode: checked })}
+        />
         <label className="server-tool-field">
           <span className="server-tool-field-label">{serverToolT('viewInterface')}</span>
           <select

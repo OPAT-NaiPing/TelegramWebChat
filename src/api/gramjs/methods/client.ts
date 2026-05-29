@@ -126,7 +126,7 @@ export async function init(initialArgs: ApiInitialArgs, onConnected?: NoneToVoid
   const {
     userAgent, platform, sessionData, isWebmSupported, maxBufferSize, webAuthToken, dcId,
     mockScenario, shouldForceHttpTransport, shouldAllowHttpTransport,
-    shouldDebugExportedSenders, langCode, isTestServerRequested, accountIds,
+    shouldDebugExportedSenders, serverRelay, langCode, isTestServerRequested, accountIds,
     hasPasskeySupport,
   } = initialArgs;
 
@@ -137,6 +137,8 @@ export async function init(initialArgs: ApiInitialArgs, onConnected?: NoneToVoid
   (self as any).isWebmSupported = isWebmSupported;
 
   (self as any).maxBufferSize = maxBufferSize;
+  (self as any).__serverTelegramRelay = serverRelay;
+  const isServerRelayEnabled = Boolean(serverRelay?.enabled && serverRelay.accountId);
 
   client = new TelegramClient(
     session,
@@ -149,8 +151,9 @@ export async function init(initialArgs: ApiInitialArgs, onConnected?: NoneToVoid
       useWSS: true,
       additionalDcsDisabled: IS_TEST,
       shouldDebugExportedSenders,
-      shouldForceHttpTransport,
-      shouldAllowHttpTransport,
+      // 服务账号后端代理模式必须固定走同源 /tgws，避免 HTTP fallback 直连 zws*.web.telegram.org/apiw1。
+      shouldForceHttpTransport: isServerRelayEnabled ? false : shouldForceHttpTransport,
+      shouldAllowHttpTransport: isServerRelayEnabled ? false : shouldAllowHttpTransport,
       dcId,
       langPack: serverDeviceConfig?.langPack || LANG_PACK,
       langCode: serverDeviceConfig?.langCode || langCode,

@@ -1,7 +1,15 @@
 import type { CancellableCallback } from '../../util/PostMessageConnector';
 
 import { createWorkerInterface } from '../../util/createPostMessageInterface';
+import rlottieWasmUrl from './rlottie-wasm.wasm';
 
+// Emscripten 默认按运行脚本目录查找 wasm；生产环境和 blob worker 下容易命中 HTML fallback。
+// 这里显式交给 webpack 解析后的资源地址，保证请求到真实 wasm 二进制。
+self.Module = {
+  locateFile(path: string) {
+    return path.endsWith('.wasm') ? rlottieWasmUrl : path;
+  },
+};
 importScripts(new URL('./rlottie-wasm.js', import.meta.url));
 
 declare const Module: any;

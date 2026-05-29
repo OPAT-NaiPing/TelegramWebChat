@@ -124,6 +124,7 @@ const ServerAccountShell = () => {
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [activeToolPage, setActiveToolPage] = useState<ServerToolPage | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+  const [switchingAccountTitle, setSwitchingAccountTitle] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [wsDisconnected, setWsDisconnected] = useState<{
     message: string;
@@ -137,6 +138,7 @@ const ServerAccountShell = () => {
   } | undefined>();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSignOutDialogOpen, openSignOutDialog, closeSignOutDialog] = useFlag(false);
+  const accountSwitchRequestIdRef = useRef(0);
   const selectedAccount = accounts.find((account) => getServerAccountId(account) === selectedAccountId);
   const { showNotification } = getActions();
 
@@ -382,26 +384,42 @@ const ServerAccountShell = () => {
       showNotification({ message: '账号信息缺少服务端 ID，无法检测在线状态', icon: 'warning' });
       return;
     }
+    if (accountId === selectedAccountId && frameUrl) {
+      collapseSidebarOnSmallScreen();
+      return;
+    }
 
+    const switchRequestId = accountSwitchRequestIdRef.current + 1;
+    accountSwitchRequestIdRef.current = switchRequestId;
+
+    setSwitchingAccountTitle(getAccountTitle(account));
     setIsLoading(true);
     let slot: number;
     try {
       await checkServerAccountOnline(backendAccountId);
       slot = importServerAccountIntoNativeSlot(account);
     } catch (err: any) {
+      if (accountSwitchRequestIdRef.current !== switchRequestId) return;
+
       showNotification({ message: err?.message || '账号不在线，无法载入', icon: 'warning' });
+      setSwitchingAccountTitle(undefined);
       setIsLoading(false);
       return;
     }
+
+    if (accountSwitchRequestIdRef.current !== switchRequestId) return;
 
     if (!slot) {
       showNotification({ message: '账号置入失败，无法载入', icon: 'warning' });
+      setSwitchingAccountTitle(undefined);
       setIsLoading(false);
       return;
     }
 
+    const nextFrameUrl = getServerAccountFrameUrl(slot, accountId);
+
     setSelectedAccountId(accountId);
-    setFrameUrl(getServerAccountFrameUrl(slot));
+    setFrameUrl((currentFrameUrl) => (currentFrameUrl === nextFrameUrl ? currentFrameUrl : nextFrameUrl));
     collapseSidebarOnSmallScreen();
     setIsLoading(false);
   }
@@ -687,12 +705,22 @@ const ServerAccountShell = () => {
             )}
           </div>
         ) : frameUrl ? (
-          <iframe
-            ref={frameRef}
-            className="server-account-shell-frame"
-            title="Telegram 原生界面"
-            src={frameUrl}
-          />
+          <>
+            <iframe
+              ref={frameRef}
+              className="server-account-shell-frame"
+              title="Telegram 原生界面"
+              src={frameUrl}
+              onLoad={() => setSwitchingAccountTitle(undefined)}
+            />
+            {switchingAccountTitle && (
+              <div className="server-account-shell-switching">
+                <span className="server-account-shell-switching-spinner" />
+                <strong className="server-account-shell-placeholder-title">正在载入账号</strong>
+                <span className="server-account-shell-placeholder-text">{switchingAccountTitle}</span>
+              </div>
+            )}
+          </>
         ) : (
           <div className="server-account-shell-placeholder">
             <i className="icon icon-user" />

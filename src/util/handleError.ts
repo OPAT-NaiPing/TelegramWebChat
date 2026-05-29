@@ -3,7 +3,7 @@ import { isCurrentTabMaster } from './establishMultitabRole';
 import { throttle } from './schedulers';
 
 let showError = true;
-let error: Error | undefined;
+let error: unknown;
 
 window.addEventListener('error', handleErrorEvent);
 window.addEventListener('unhandledrejection', handleErrorEvent);
@@ -35,7 +35,7 @@ const throttleError = throttle((err) => {
   }
 }, 1500);
 
-export function handleError(err: Error) {
+export function handleError(err: unknown) {
   // eslint-disable-next-line no-console
   console.error(err);
   if (DEBUG) {
@@ -60,6 +60,17 @@ function handleErrorEvent(e: ErrorEvent | PromiseRejectionEvent) {
   handleError(e instanceof ErrorEvent ? (e.error || e.message) : e.reason);
 }
 
-function getErrorMessage(err: Error) {
-  return `${DEBUG_ALERT_MSG}\n\n${(err?.message) || err}\n${err?.stack}`;
+function getErrorMessage(err: unknown) {
+  if (err instanceof Error) {
+    return `${DEBUG_ALERT_MSG}\n\n${err.message || err}\n${err.stack || ''}`;
+  }
+
+  return `${DEBUG_ALERT_MSG}\n\n${formatUnknownError(err)}`;
+}
+
+function formatUnknownError(err: unknown) {
+  if (typeof err === 'string' && err) return err;
+  if (typeof err === 'number' || typeof err === 'boolean') return String(err);
+
+  return '未知错误';
 }

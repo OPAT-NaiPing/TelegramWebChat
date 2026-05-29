@@ -18,8 +18,8 @@ import getOffsetToContainer from './visibility/getOffsetToContainer';
 import { animateSingle, cancelSingleAnimation } from './animation';
 
 export type AnimateScrollArgs = {
-  container: HTMLElement;
-  element: HTMLElement;
+  container?: HTMLElement;
+  element?: HTMLElement | null;
   position: ScrollTargetPosition;
   margin?: number;
   maxDistance?: number;
@@ -34,8 +34,12 @@ let currentArgs: AnimateScrollArgs | undefined;
 let onHeavyAnimationEnd: NoneToVoidFunction | undefined;
 
 export default function animateScroll(args: AnimateScrollArgs) {
-  currentArgs = args;
   const mutate = createMutateFunction(args);
+  if (!mutate) {
+    return undefined;
+  }
+
+  currentArgs = args;
 
   if (args.shouldReturnMutationFn) {
     return mutate;
@@ -46,18 +50,25 @@ export default function animateScroll(args: AnimateScrollArgs) {
 }
 
 export function restartCurrentScrollAnimation() {
-  if (!isAnimating) {
+  if (!isAnimating || !currentArgs) {
     return;
   }
 
   cancelSingleAnimation();
 
   requestMeasure(() => {
-    requestMutation(createMutateFunction(currentArgs!));
+    const mutate = createMutateFunction(currentArgs);
+    if (mutate) {
+      requestMutation(mutate);
+    }
   });
 }
 
-function createMutateFunction(args: AnimateScrollArgs) {
+function createMutateFunction(args?: AnimateScrollArgs) {
+  if (!args) {
+    return undefined;
+  }
+
   const {
     container,
     element,
@@ -67,6 +78,10 @@ function createMutateFunction(args: AnimateScrollArgs) {
     forceDirection,
     forceNormalContainerHeight,
   } = args;
+
+  if (!container || !element || !container.isConnected || !element.isConnected) {
+    return undefined;
+  }
 
   let forceDuration = args.forceDuration;
 
@@ -117,6 +132,14 @@ function createMutateFunction(args: AnimateScrollArgs) {
   const absPath = Math.abs(path);
 
   return () => {
+    if (!container.isConnected || !element.isConnected) {
+      currentArgs = undefined;
+      isAnimating = false;
+      onHeavyAnimationEnd?.();
+      onHeavyAnimationEnd = undefined;
+      return;
+    }
+
     if (absPath < 1) {
       if (currentScrollTop !== scrollFrom) {
         container.scrollTop = scrollFrom;
@@ -150,6 +173,17 @@ function createMutateFunction(args: AnimateScrollArgs) {
     prevOnHeavyAnimationEnd?.();
 
     animateSingle(() => {
+      if (!container.isConnected) {
+        currentArgs = undefined;
+        isAnimating = false;
+        setExtraStyles(container, {
+          scrollSnapType: '',
+        });
+        onHeavyAnimationEnd?.();
+        onHeavyAnimationEnd = undefined;
+        return false;
+      }
+
       const t = Math.min((Date.now() - startAt) / duration, 1);
       const currentPath = path * (1 - transition(t));
       const newScrollTop = Math.round(target - currentPath);

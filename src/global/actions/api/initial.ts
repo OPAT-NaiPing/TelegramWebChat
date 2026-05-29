@@ -23,6 +23,7 @@ import { unsubscribe } from '../../../util/notifications';
 import { clearEncryptedSession, encryptSession, forgetPasscode } from '../../../util/passcode';
 import { parseInitialLocationHash, resetInitialLocationHash, resetLocationHash } from '../../../util/routing';
 import { pause } from '../../../util/schedulers';
+import { loadServerToolSettings } from '../../../util/serverTools';
 import {
   clearStoredSession,
   loadStoredSession,
@@ -57,6 +58,7 @@ addActionHandler('initApi', (global, actions): ActionReturnType => {
 
   const isTestServer = global.config?.isTestServer;
   const accountsInfo = getAccountsInfo();
+  const sessionData = loadStoredSession();
   const accountIds = Object.values(accountsInfo)
     .filter((info) => info.isTest === isTestServer)
     .map(({ userId }) => userId)
@@ -65,7 +67,7 @@ addActionHandler('initApi', (global, actions): ActionReturnType => {
   void initApi(actions.apiUpdate, {
     userAgent: navigator.userAgent,
     platform: PLATFORM_ENV,
-    sessionData: loadStoredSession(),
+    sessionData,
     isWebmSupported: IS_WEBM_SUPPORTED,
     maxBufferSize: MAX_BUFFER_SIZE,
     webAuthToken: initialLocationHash?.tgWebAuthToken,
@@ -74,6 +76,13 @@ addActionHandler('initApi', (global, actions): ActionReturnType => {
     shouldAllowHttpTransport,
     shouldForceHttpTransport,
     shouldDebugExportedSenders,
+    serverRelay: process.env.SERVER_ACCOUNT_LOGIN === '1' ? {
+      enabled: loadServerToolSettings().backendProxyMode,
+      accountId: sessionData?.serverAccountId,
+      deviceMode: sessionData?.serverDeviceConfig?.mode,
+      proxyIp: sessionData?.serverProxyIp,
+      relayUrl: process.env.SERVER_TGWS_RELAY_URL,
+    } : undefined,
     langCode: language,
     isTestServerRequested: hasTestParam,
     accountIds,

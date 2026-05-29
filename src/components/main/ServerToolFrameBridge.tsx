@@ -10,7 +10,7 @@ import { SUPPORTED_AUDIO_CONTENT_TYPES, SUPPORTED_PHOTO_CONTENT_TYPES } from '..
 import { selectCurrentMessageList } from '../../global/selectors';
 import { generateWaveform } from '../../util/generateWaveform';
 import { serverToolT } from '../../util/serverToolLocale';
-import { isServerToolMessage } from '../../util/serverTools';
+import { isServerToolMessage, saveServerToolSettings } from '../../util/serverTools';
 import buildAttachment from '../middle/composer/helpers/buildAttachment';
 
 const IMAGE_EXTENSION_MIME_MAP: Record<string, string> = {
@@ -161,6 +161,7 @@ const ServerToolFrameBridge = () => {
       if (event.origin !== window.location.origin || !isServerToolMessage(event.data)) return;
 
       if (event.data.type === 'server-tool-settings-updated') {
+        saveServerToolSettings(event.data.settings);
         window.dispatchEvent(new CustomEvent('server-tool-settings-updated', { detail: event.data.settings }));
         return;
       }

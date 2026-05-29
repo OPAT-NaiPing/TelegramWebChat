@@ -92,7 +92,7 @@ export class Connection {
   async _connect() {
     this._log.debug('Connecting');
     this._codec = new this.PacketCodecClass!(this);
-    await this.socket.connect(this._port, this._ip, this._isTestServer, this._isPremium);
+    await this.socket.connect(this._port, this._ip, this._isTestServer, this._isPremium, this._dcId);
     this._log.debug('Finished connecting');
 
     await this._initConn();

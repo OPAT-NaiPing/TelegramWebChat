@@ -47,6 +47,7 @@ const {
   BASE_WS = '',
   SERVER_BASE_API = '',
   SERVER_BASE_WS = '',
+  SERVER_TGWS_RELAY_URL = '',
   SERVER_SKIP_TURNSTILE = '',
   SERVER_TURNSTILE_SITE_KEY = '',
   HTTPS_CERT_PATH = '',
@@ -67,8 +68,10 @@ const CSP = `
   default-src 'self';
   connect-src 'self' wss://*.web.telegram.org blob: http: https: ws: wss:
     ${APP_ENV === 'development' ? 'ipc:' : ''};
-  script-src 'self' 'wasm-unsafe-eval'
-    https://t.me/_websync_ https://telegram.me/_websync_ https://challenges.cloudflare.com;
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'
+    https://t.me/_websync_ https://telegram.me/_websync_
+    https://challenges.cloudflare.com https://static.cloudflareinsights.com;
+  worker-src 'self' blob:;
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: blob: http: https:;
   media-src 'self' blob: data:;
@@ -114,6 +117,12 @@ export default function createConfig(
       static: [
         {
           directory: path.resolve(__dirname, 'public'),
+        },
+        {
+          // 生产构建会把 public 里的运行资源复制到 dist/assets；
+          // 开发环境也按同一路径暴露，避免 HTML/音频资源请求 ./assets/* 时 404。
+          directory: path.resolve(__dirname, 'public'),
+          publicPath: '/assets',
         },
         {
           directory: path.resolve(__dirname, 'node_modules/emoji-data-ios'),
@@ -249,6 +258,7 @@ export default function createConfig(
         BASE_WS,
         SERVER_BASE_API,
         SERVER_BASE_WS,
+        SERVER_TGWS_RELAY_URL,
         SERVER_SKIP_TURNSTILE,
         SERVER_TURNSTILE_SITE_KEY,
         // eslint-disable-next-line no-null/no-null
